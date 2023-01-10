@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import pandas as pd
 import gurobipy as gb
 from torchviz import make_dot
 
@@ -151,10 +152,24 @@ if __name__ == "__main__":
     # b0 = np.array([20, 24])
     # c0 = np.array([2, 9])
 
+    # (411, 323)
+
     model = gb.read("model.lp")
+    # model.getAttr("Sense", model.getConstrs())
+    VType = model.getAttr("VType", model.getVars())
+    VarName = model.getAttr("VarName", model.getVars())
+
+    VNameType = [f"{var}_{typ}" for var,typ in zip(VarName, VType)]
+    index = model.getAttr("ConstrName", model.getConstrs())
+
     A0 = model.getA().toarray()
     b0 = np.asarray(model.getAttr("RHS", model.getConstrs()))
     c0 = np.asarray(model.getAttr("Obj", model.getVars()))
+
+    df = pd.DataFrame(A0, index=index, columns=VNameType)
+    df['B0'] = b0
+    df.loc["c0"] = np.append(c0, 0)
+    df.to_html('df.html', index=True, header=True)
 
     # load_dir = "instances/train_100_n60_m60"
     # idx = 0

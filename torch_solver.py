@@ -40,7 +40,10 @@ def gurobi_solve(A, b, c, Method=0):
     c = -c  # Gurobi default is maximization
     varrange = range(c.size)
     crange = range(b.size)
-    m = Model("LP")
+    # m = Model("LP")
+    m = read("model.lp")
+    for con in m.getConstrs():
+        con.Sense = '='
     m.params.OutputFlag = 0  # suppress output
     X = m.addVars(
         varrange, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS, obj=c, name="X"
@@ -55,11 +58,11 @@ def gurobi_solve(A, b, c, Method=0):
     solution = []
     basis_index = []
     RC = []
-    for i in X:
-        solution.append(X[i].X)
-        RC.append(X[i].getAttr("RC"))
-        if X[i].getAttr("VBasis") == 0:
-            basis_index.append(i)
+    for i in m.getVars():
+        solution.append(i.X)
+        RC.append(i.getAttr("RC"))
+        if i.getAttr("VBasis") == 0:
+            basis_index.append(i.index)
     solution = np.asarray(solution)
     RC = np.asarray(RC)
     basis_index = np.asarray(basis_index)
@@ -98,11 +101,11 @@ def computeoptimaltab(A, b, RC, obj, basis_index):
 def compute_state(A, b, c):
     m, n = A.shape
     assert m == b.size and n == c.size
-    A_tilde = np.column_stack((A, np.eye(m)))
+    A_tilde = np.eye(m)
     b_tilde = b
-    c_tilde = np.append(c, np.zeros(m))
+    c_tilde = np.zeros(m)
     obj, sol, basis_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde)
-    tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index)
+    tab = computeoptimaltab(np.column_stack((A, np.eye(m))), b, rc, obj, basis_index)
     tab = roundmarrays(tab)
     x = tab[:, 0]
     # print(tab)

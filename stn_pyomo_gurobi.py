@@ -135,10 +135,11 @@ class STN(object):
         self.H = max(self.TIME)
         self.model = pe.ConcreteModel()
         m = self.model
-        m.cons = pe.ConstraintList()
+        # m.cons = pe.ConstraintList()
+        m.cons = pe.Constraint(pe.Any)
 
         # W[i,j,t] 1 if task i starts in unit j at time t
-        m.W = pe.Var(self.tasks, self.units, self.TIME, domain=pe.NonNegativeReals)  # domain=pe.Boolean)
+        m.W = pe.Var(self.tasks, self.units, self.TIME, domain=pe.Boolean)  # domain=pe.Boolean)
 
         # B[i,j,t] size of batch assigned to task i in unit j at time t
         m.B = pe.Var(self.tasks, self.units, self.TIME, domain=pe.NonNegativeReals)
@@ -153,10 +154,10 @@ class STN(object):
         m.Cost = pe.Var(domain=pe.NonNegativeReals)
         m.StorageCost = pe.Var(domain=pe.NonNegativeReals)
         m.Value = pe.Var(domain=pe.NonNegativeReals)
-        m.cons.add(
+        m.cons["Value"]=(
             m.Value == sum([self.price[s] * m.S[s, self.H] for s in self.states])
         )
-        m.cons.add(
+        m.cons["Cost"]=(
             m.Cost
             == sum(
                 [
@@ -167,7 +168,7 @@ class STN(object):
                 ]
             )
         )
-        m.cons.add(
+        m.cons["StorageCost"]=(
             m.StorageCost
             == sum(
                 [
@@ -191,12 +192,12 @@ class STN(object):
                         (self.TIME <= t) & (self.TIME >= t - self.p[i] + 1)
                     ]:
                         lhs += m.W[i, j, tprime]
-                m.cons.add(lhs <= 1)
+                m.cons[f"unit_constraint_{j}_time_{t}"]=(lhs <= 1)
 
                 # capacity constraints (see Konkili, Sec. 3.1.2)
                 for i in self.I[j]:
-                    m.cons.add(m.W[i, j, t] * self.Bmin[i, j] <= m.B[i, j, t])
-                    m.cons.add(m.B[i, j, t] <= m.W[i, j, t] * self.Bmax[i, j])
+                    m.cons[f"capacity_constraint1_{j}_time_{t}_{i}"]=(m.W[i, j, t] * self.Bmin[i, j] <= m.B[i, j, t])
+                    m.cons[f"capacity_constraint2_{j}_time_{t}_{i}"]=(m.B[i, j, t] <= m.W[i, j, t] * self.Bmax[i, j])
 
                 # unit mass balance
                 rhs += sum([m.B[i, j, t] for i in self.I[j]])
@@ -211,7 +212,7 @@ class STN(object):
                                         max(self.TIME[self.TIME <= t - self.P[(i, s)]]),
                                     ]
                             )
-                m.cons.add(m.Q[j, t] == rhs)
+                m.cons[f"unit_mass_balance_{j}_time_{t}"]=(m.Q[j, t] == rhs)
                 rhs = m.Q[j, t]
 
                 # switchover time constraints
@@ -225,17 +226,17 @@ class STN(object):
                                         < t1 + self.p[i1] + self.changeoverTime[(i1, i2)]
                                 )
                             ]:
-                                m.cons.add(m.W[i1, j, t1] + m.W[i2, j, t2] <= 1)
+                                m.cons[f"switchover_{i1}_{i2}_{t1}_{t2}_{j}_time_{t}"]=(m.W[i1, j, t1] + m.W[i2, j, t2] <= 1)
 
                 # terminal condition
-                m.cons.add(m.Q[j, self.H] == 0)
+                m.cons[f"terminal_condition_{j}_time_{t}"]=(m.Q[j, self.H] == 0)
 
         # state constraints
         for s in self.states:
             rhs = self.init[s]
             for t in self.TIME:
                 # state capacity constraint
-                m.cons.add(m.S[s, t] <= self.C[s])
+                m.cons[f"state_{s}_capacity_constraint_time_{t}"]=(m.S[s, t] <= self.C[s])
                 # state mass balance
                 for i in self.T_[s]:
                     for j in self.K[i]:
@@ -250,7 +251,7 @@ class STN(object):
                             )
                 for i in self.T[s]:
                     rhs -= self.rho[(i, s)] * sum([m.B[i, j, t] for j in self.K[i]])
-                m.cons.add(m.S[s, t] == rhs)
+                m.cons[f"state_{s}_mass_balance_time_{t}"]=(m.S[s, t] == rhs)
                 rhs = m.S[s, t]
 
     # def solve(self, solver="glpk"):
