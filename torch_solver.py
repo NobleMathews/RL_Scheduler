@@ -1,5 +1,7 @@
 import numpy as np
 from gurobipy import *
+from itertools import chain
+
 
 # min c^T x, Ax <= b, x>=0
 
@@ -36,21 +38,34 @@ def updatetab(tab, cut_a, cut_b, basis_index):
     return newtab, basis_index, Anew, bnew
 
 
-def gurobi_solve(A, b, c, Method=0):
+def gurobi_solve(A, b, c, sense, Method=0):
     c = -c  # Gurobi default is maximization
     varrange = range(c.size)
     crange = range(b.size)
-    # m = Model("LP")
-    m = read("model.lp")
-    for con in m.getConstrs():
-        con.Sense = '='
+    m = Model("LP")
     m.params.OutputFlag = 0  # suppress output
     X = m.addVars(
         varrange, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS, obj=c, name="X"
     )
-    _C = m.addConstrs(
-        (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange), "C"
-    )
+    _C = m.addConstrs((sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange), "C")
+    # _C_e = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="), "C"
+    # )
+    # _C_l = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if sense and sense[i] == "<"), "C"
+    # )
+    # _C_g = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if sense and sense[i] == ">"), "C"
+    # )
+    # _C = m.addConstrs(
+    #     (get_constr(A, b, X, i, varrange, sense) for i in crange), "C"
+    # )
+    # chained = chain.from_iterable(
+    #     [(sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="),
+    #      (sum(A[i, j] * X[j] for j in varrange) <= b[i] for i in crange if sense and sense[i] == "<"),
+    #      (sum(A[i, j] * X[j] for j in varrange) >= b[i] for i in crange if sense and sense[i] == ">")]
+    # )
+    # _C = m.addConstrs(chained, "C")
     m.params.Method = Method  # primal simplex Method = 0
     # print('start optimizing...')
     m.optimize()
@@ -58,16 +73,23 @@ def gurobi_solve(A, b, c, Method=0):
     solution = []
     basis_index = []
     RC = []
-    for i in m.getVars():
-        solution.append(i.X)
-        RC.append(i.getAttr("RC"))
-        if i.getAttr("VBasis") == 0:
-            basis_index.append(i.index)
+    for i in X:
+        solution.append(X[i].X)
+        RC.append(X[i].getAttr("RC"))
+        if X[i].getAttr("VBasis") == 0:
+            basis_index.append(i)
+    # for i in _C:
+    #     if _C[i].getAttr("CBasis") == 0:
+    #         print(i)
+    # cb1 = [x for x in _C_l if _C_l[x].getAttr("CBasis") == 0]
+    # cb2 = [x for x in _C_g if _C_g[x].getAttr("CBasis") == 0]
+    # cb3 = [x for x in _C_e if _C_e[x].getAttr("CBasis") == 0]
     solution = np.asarray(solution)
     RC = np.asarray(RC)
     basis_index = np.asarray(basis_index)
+    # identity_index = np.asarray(cb1 + cb2 + cb3)
     # print('solving completes')
-    return m.ObjVal, solution, basis_index, RC
+    return m.ObjVal, solution, basis_index, [], RC
 
 
 def roundmarrays(x, delta=1e-7):
@@ -79,11 +101,13 @@ def roundmarrays(x, delta=1e-7):
     return x
 
 
-def computeoptimaltab(A, b, RC, obj, basis_index):
+def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     m, n = A.shape
     assert m == b.size
     assert n == RC.size
     B = A[:, basis_index]
+    if identity_index is not None:
+        B = np.concatenate((B, np.eye(m)[:, identity_index]), axis=1)
     try:
         INV = np.linalg.inv(B)
     except:
@@ -98,14 +122,22 @@ def computeoptimaltab(A, b, RC, obj, basis_index):
     return tab
 
 
-def compute_state(A, b, c):
+def compute_state(A, b, c, sense):
     m, n = A.shape
     assert m == b.size and n == c.size
-    A_tilde = np.eye(m)
+    factor = []
+    for x in sense:
+        if x == "=":
+            factor.append(1)
+        elif x == ">":
+            factor.append(-1)
+        else:
+            factor.append(1)
+    A_tilde = np.column_stack((A, np.eye(m)*np.array(factor)[:, None]))
     b_tilde = b
-    c_tilde = np.zeros(m)
-    obj, sol, basis_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde)
-    tab = computeoptimaltab(np.column_stack((A, np.eye(m))), b, rc, obj, basis_index)
+    c_tilde = np.append(c, np.zeros(m))
+    obj, sol, basis_index, identity_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde, sense)
+    tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index, identity_index)
     tab = roundmarrays(tab)
     x = tab[:, 0]
     # print(tab)

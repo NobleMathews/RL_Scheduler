@@ -147,15 +147,10 @@ if __name__ == "__main__":
     dense_hidden = 64
     actor = Policy(input_size=input_dim, hidden_size=lstm_hidden, hidden_size2=dense_hidden, lr=lr)
     # min {cx | Ax <= b, x >= 0, x integer}
-
-    # A0 = np.array([[2, 1], [1, 5]])
-    # b0 = np.array([20, 24])
-    # c0 = np.array([2, 9])
-
     # (411, 323)
 
     model = gb.read("model.lp")
-    # model.getAttr("Sense", model.getConstrs())
+    sense = model.getAttr("Sense", model.getConstrs())
     VType = model.getAttr("VType", model.getVars())
     VarName = model.getAttr("VarName", model.getVars())
 
@@ -163,22 +158,29 @@ if __name__ == "__main__":
     index = model.getAttr("ConstrName", model.getConstrs())
 
     A0 = model.getA().toarray()
-    b0 = np.asarray(model.getAttr("RHS", model.getConstrs()))
+    # * factor[:, None]
+    b0 = np.asarray(model.getAttr("RHS", model.getConstrs()))\
+    # * factor
     c0 = np.asarray(model.getAttr("Obj", model.getVars()))
 
-    df = pd.DataFrame(A0, index=index, columns=VNameType)
-    df['B0'] = b0
-    df.loc["c0"] = np.append(c0, 0)
-    df.to_html('df.html', index=True, header=True)
+    # df = pd.DataFrame(A0, index=index, columns=VNameType)
+    # df['B0'] = b0
+    # df.loc["c0"] = np.append(c0, 0)
+    # df.to_html('df.html', index=True, header=True)
 
     # load_dir = "instances/train_100_n60_m60"
     # idx = 0
     # A0 = np.load('{}/A_{}.npy'.format(load_dir, idx))
     # b0 = np.load('{}/b_{}.npy'.format(load_dir, idx))
-
     # c0 = np.load('{}/c_{}.npy'.format(load_dir, idx))
+    # sense = None
 
-    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0)
+    # A0 = np.array([[2, 1], [1, 5]])
+    # b0 = np.array([20, 24])
+    # c0 = np.array([2, 9])
+    # sense = ["<", "<"]
+
+    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense)
 
     A, b, cuts_a, cuts_b = normalized(A, b, cuts_a, cuts_b)
 
