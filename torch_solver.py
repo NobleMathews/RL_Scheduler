@@ -84,12 +84,13 @@ def gurobi_solve(A, b, c, sense, Method=0):
     # cb1 = [x for x in _C_l if _C_l[x].getAttr("CBasis") == 0]
     # cb2 = [x for x in _C_g if _C_g[x].getAttr("CBasis") == 0]
     # cb3 = [x for x in _C_e if _C_e[x].getAttr("CBasis") == 0]
+    cb = [x for x in _C if _C[x].getAttr("CBasis") == 0]
     solution = np.asarray(solution)
     RC = np.asarray(RC)
     basis_index = np.asarray(basis_index)
-    # identity_index = np.asarray(cb1 + cb2 + cb3)
+    identity_index = np.asarray(cb)
     # print('solving completes')
-    return m.ObjVal, solution, basis_index, [], RC
+    return m.ObjVal, solution, basis_index, identity_index, RC
 
 
 def roundmarrays(x, delta=1e-7):
@@ -128,7 +129,7 @@ def compute_state(A, b, c, sense):
     factor = []
     for x in sense:
         if x == "=":
-            factor.append(1)
+            factor.append(0)
         elif x == ">":
             factor.append(-1)
         else:

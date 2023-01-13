@@ -75,7 +75,7 @@ class Policy(object):
         constraints = torch.FloatTensor(constraints)
         cuts = torch.FloatTensor(cuts)
         y = self.model(constraints, cuts)
-        make_dot(y.mean(), params=dict(self.model.named_parameters())).render("attached", format="png")
+        # make_dot(y.mean(), params=dict(self.model.named_parameters())).render("attached", format="png")
         prob = torch.nn.functional.softmax(y, dim=-1)
         return prob.cpu().data.numpy()
 
