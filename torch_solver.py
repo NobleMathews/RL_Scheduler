@@ -6,16 +6,26 @@ from itertools import chain
 # min c^T x, Ax <= b, x>=0
 
 
-def generatecutzeroth(row):
+def generatecutzeroth(row, NI):
     ###
     # generate cut that includes cost/obj row as well
     ###
+    # n = row.size
+    # a = row[1:n]
+    # b = row[0]
+    # cut_a = a - np.floor(a)
+    # cut_b = b - np.floor(b)
+    # return cut_a, cut_b
     n = row.size
     a = row[1:n]
     b = row[0]
-    cut_a = a - np.floor(a)
-    cut_b = b - np.floor(b)
-    return cut_a, cut_b
+    fij = a - np.floor(a)
+    fio = b - np.floor(b)
+    for i,fj in enumerate(fij):
+        if i in NI:
+            pass
+    sense = ">"
+    return cut_a, fio, sense
 
 
 def updatetab(tab, cut_a, cut_b, basis_index):
@@ -107,7 +117,7 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     assert m == b.size
     assert n == RC.size
     B = A[:, basis_index]
-    if identity_index is not None:
+    if identity_index:
         B = np.concatenate((B, np.eye(m)[:, identity_index]), axis=1)
     try:
         INV = np.linalg.inv(B)
@@ -123,7 +133,7 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     return tab
 
 
-def compute_state(A, b, c, sense):
+def compute_state(A, b, c, sense, integrality):
     m, n = A.shape
     assert m == b.size and n == c.size
     factor = []
@@ -148,16 +158,17 @@ def compute_state(A, b, c, sense):
     cuts_a = []
     cuts_b = []
     for i in range(x.size):
-        if abs(round(x[i]) - x[i]) > 1e-2:
-            # fractional rows used to compute cut
-            cut_a, cut_b = generatecutzeroth(tab[i, :])
-            # a^T x + e^T y >= d
-            assert cut_a.size == m + n
-            a = cut_a[0:n]
-            e = cut_a[n:]
-            newA = np.dot(A.T, e) - a
-            newb = np.dot(e, b) - cut_b
-            cuts_a.append(newA)
-            cuts_b.append(newb)
+        if i==0 or integrality[i+1] != "C":
+            if abs(round(x[i]) - x[i]) > 1e-2:
+                # fractional rows used to compute cut
+                cut_a, cut_b, sense = generatecutzeroth(tab[i, :], integrality)
+                # a^T x + e^T y >= d
+                assert cut_a.size == m + n
+                a = cut_a[0:n]
+                e = cut_a[n:]
+                newA = np.dot(A.T, e) - a
+                newb = np.dot(e, b) - cut_b
+                cuts_a.append(newA)
+                cuts_b.append(newb)
     cuts_a, cuts_b = np.array(cuts_a), np.array(cuts_b)
     return A, b, cuts_a, cuts_b, done, obj, x, tab
