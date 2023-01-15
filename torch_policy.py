@@ -180,10 +180,11 @@ if __name__ == "__main__":
     # c0 = np.array([2, 9])
     # sense = ["<", "<"]
 
-    # A0 = np.array([[4, -1, 0], [-1, 6, 0], [-1, 1, 1]])
-    # b0 = np.array([5, 5, 5])
-    # c0 = np.array([4, 6, 2])
-    # sense = ["=", "<", "<"]
+    # A0 = np.array([[1, 1], [5, 9]])
+    # b0 = np.array([6, 45])
+    # c0 = np.array([5, 8])
+    # sense = ["<", "<"]
+    # VType = ["Z", "Z"]
 
     A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType)
 
