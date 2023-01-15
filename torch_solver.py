@@ -6,7 +6,7 @@ from itertools import chain
 # min c^T x, Ax <= b, x>=0
 
 
-def generatecutzeroth(row, NI):
+def generatecutzeroth(row, p):
     ###
     # generate cut that includes cost/obj row as well
     ###
@@ -19,13 +19,23 @@ def generatecutzeroth(row, NI):
     n = row.size
     a = row[1:n]
     b = row[0]
-    fij = a - np.floor(a)
-    fio = b - np.floor(b)
-    for i,fj in enumerate(fij):
-        if i in NI:
-            pass
+    fj = a - np.floor(a)
+    f0 = b - np.floor(b)
+    coeff = np.zeros(n-1)
+    for j, fj in enumerate(fj):
+        if j < p:
+            if fj <= f0:
+                coeff[j] += fj/f0
+            else:
+                coeff[j] += (1-fj)/(1-f0)
+        else:
+            aj = a[j]
+            if aj > 0:
+                coeff[j] += aj / f0
+            else:
+                coeff[j] += -1 * aj / (1 - f0)
     sense = ">"
-    return cut_a, fio, sense
+    return coeff, 1, sense
 
 
 def updatetab(tab, cut_a, cut_b, basis_index):
@@ -94,7 +104,12 @@ def gurobi_solve(A, b, c, sense, Method=0):
     # cb1 = [x for x in _C_l if _C_l[x].getAttr("CBasis") == 0]
     # cb2 = [x for x in _C_g if _C_g[x].getAttr("CBasis") == 0]
     # cb3 = [x for x in _C_e if _C_e[x].getAttr("CBasis") == 0]
-    cb = [x for x in _C if _C[x].getAttr("CBasis") == 0]
+    cb = []
+    for x in _C:
+        # RC.append(-1*_C[x].getAttr("Pi"))
+        # solution.append(_C[x].Slack)
+        if _C[x].getAttr("CBasis") == 0:
+            cb.append(x)
     solution = np.asarray(solution)
     RC = np.asarray(RC)
     basis_index = np.asarray(basis_index)
@@ -117,7 +132,7 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     assert m == b.size
     assert n == RC.size
     B = A[:, basis_index]
-    if identity_index:
+    if len(identity_index):
         B = np.concatenate((B, np.eye(m)[:, identity_index]), axis=1)
     try:
         INV = np.linalg.inv(B)
@@ -137,16 +152,23 @@ def compute_state(A, b, c, sense, integrality):
     m, n = A.shape
     assert m == b.size and n == c.size
     factor = []
-    for x in sense:
+    delete = []
+    for i,x in enumerate(sense):
         if x == "=":
+            delete.append(i)
             factor.append(0)
         elif x == ">":
             factor.append(-1)
         else:
             factor.append(1)
+    #         np.delete(np.eye(m)*np.array(factor)[:, None],delete, 1)
+    delete = []
     A_tilde = np.column_stack((A, np.eye(m)*np.array(factor)[:, None]))
     b_tilde = b
-    c_tilde = np.append(c, np.zeros(m))
+    c_tilde = np.append(c, np.zeros(m-len(delete)))
+    # A_tilde = A
+    # b_tilde = b
+    # c_tilde = c
     obj, sol, basis_index, identity_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde, sense)
     tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index, identity_index)
     tab = roundmarrays(tab)
@@ -158,10 +180,10 @@ def compute_state(A, b, c, sense, integrality):
     cuts_a = []
     cuts_b = []
     for i in range(x.size):
-        if i==0 or integrality[i+1] != "C":
+        if i!=0 and i <= len(integrality) and integrality[i-1] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # fractional rows used to compute cut
-                cut_a, cut_b, sense = generatecutzeroth(tab[i, :], integrality)
+                cut_a, cut_b, sense = generatecutzeroth(tab[i, :], n)
                 # a^T x + e^T y >= d
                 assert cut_a.size == m + n
                 a = cut_a[0:n]
