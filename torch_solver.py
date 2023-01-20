@@ -21,13 +21,13 @@ def generatecutzeroth(row, p):
     b = row[0]
     fj = a - np.floor(a)
     f0 = b - np.floor(b)
-    coeff = np.zeros(n-1)
+    coeff = np.zeros(n - 1)
     for j, fj in enumerate(fj):
         if j < p:
             if fj <= f0:
-                coeff[j] += fj/f0
+                coeff[j] += fj / f0
             else:
-                coeff[j] += (1-fj)/(1-f0)
+                coeff[j] += (1 - fj) / (1 - f0)
         else:
             aj = a[j]
             if aj > 0:
@@ -58,8 +58,9 @@ def updatetab(tab, cut_a, cut_b, basis_index):
     return newtab, basis_index, Anew, bnew
 
 
-def gurobi_solve(A, b, c, sense, Method=0):
-    c = -c  # Gurobi default is maximization
+def gurobi_solve(A, b, c, sense, Method=0, maximize=True):
+    if maximize:
+        c = -c  # Gurobi default is maximization
     varrange = range(c.size)
     crange = range(b.size)
     m = Model("LP")
@@ -72,10 +73,10 @@ def gurobi_solve(A, b, c, sense, Method=0):
     #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="), "C"
     # )
     # _C_l = m.addConstrs(
-    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if sense and sense[i] == "<"), "C"
+    #     (sum(A[i, j] * X[j] for j in varrange) <= b[i] for i in crange if sense and sense[i] == "<"), "C"
     # )
     # _C_g = m.addConstrs(
-    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if sense and sense[i] == ">"), "C"
+    #     (sum(A[i, j] * X[j] for j in varrange) >= b[i] for i in crange if sense and sense[i] == ">"), "C"
     # )
     # _C = m.addConstrs(
     #     (get_constr(A, b, X, i, varrange, sense) for i in crange), "C"
@@ -148,12 +149,19 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     return tab
 
 
-def compute_state(A, b, c, sense, integrality):
+# def get_row_integrality(integrality, basis_index, tab):
+#     b_col_tab = basis_index + 1
+#     tab[:,b_col_tab]
+
+
+
+
+def compute_state(A, b, c, sense, integrality, maximize=True):
     m, n = A.shape
     assert m == b.size and n == c.size
     factor = []
     delete = []
-    for i,x in enumerate(sense):
+    for i, x in enumerate(sense):
         if x == "=":
             delete.append(i)
             factor.append(0)
@@ -163,9 +171,9 @@ def compute_state(A, b, c, sense, integrality):
             factor.append(1)
     #         np.delete(np.eye(m)*np.array(factor)[:, None],delete, 1)
     delete = []
-    A_tilde = np.column_stack((A, np.eye(m)*np.array(factor)[:, None]))
+    A_tilde = np.column_stack((A, np.eye(m) * np.array(factor)[:, None]))
     b_tilde = b
-    c_tilde = np.append(c, np.zeros(m-len(delete)))
+    c_tilde = np.append(c, np.zeros(m - len(delete)))
     # A_tilde = A
     # b_tilde = b
     # c_tilde = c
@@ -179,8 +187,14 @@ def compute_state(A, b, c, sense, integrality):
         done = False
     cuts_a = []
     cuts_b = []
+    # which row corresponds to which variable - verify while solving
+    # row_status = np.asarray(integrality)[basis_index[:len(integrality)]]
     for i in range(x.size):
-        if i!=0 and i <= len(integrality) and integrality[i-1] != "C":
+        if i >= len(integrality):
+            break
+        # row i -> basis of which
+        # Sol => Integrality check  and integrality[i] != "C"
+        if i != 0 and integrality[i-1] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # fractional rows used to compute cut
                 cut_a, cut_b, sense = generatecutzeroth(tab[i, :], n)
@@ -193,4 +207,5 @@ def compute_state(A, b, c, sense, integrality):
                 cuts_a.append(newA)
                 cuts_b.append(newb)
     cuts_a, cuts_b = np.array(cuts_a), np.array(cuts_b)
+    # sense cuts a  <= cuts b
     return A, b, cuts_a, cuts_b, done, obj, x, tab

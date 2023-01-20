@@ -154,14 +154,15 @@ if __name__ == "__main__":
     VType = model.getAttr("VType", model.getVars())
     VarName = model.getAttr("VarName", model.getVars())
 
-    VNameType = [f"{var}_{typ}" for var,typ in zip(VarName, VType)]
+    VNameType = [f"{var}_{typ}" for var, typ in zip(VarName, VType)]
     index = model.getAttr("ConstrName", model.getConstrs())
 
     A0 = model.getA().toarray()
     # * factor[:, None]
-    b0 = np.asarray(model.getAttr("RHS", model.getConstrs()))\
-    # * factor
+    b0 = np.asarray(model.getAttr("RHS", model.getConstrs())) \
+        # * factor
     c0 = np.asarray(model.getAttr("Obj", model.getVars()))
+    maximize = True
 
     # df = pd.DataFrame(A0, index=index, columns=VNameType)
     # df['B0'] = b0
@@ -175,18 +176,14 @@ if __name__ == "__main__":
     # c0 = np.load('{}/c_{}.npy'.format(load_dir, idx))
     # sense = None
 
-    # A0 = np.array([[2, 1], [1, 5]])
-    # b0 = np.array([20, 24])
-    # c0 = np.array([2, 9])
-    # sense = ["<", "<"]
+    # A0 = np.array([[7, -2], [0, 1], [2, -2]])
+    # b0 = np.array([14, 3, 3])
+    # c0 = np.array([4, -1])
+    # sense = ["<", "<", "<"]
+    # VType = ["Z", "C"]
+    # maximize = True
 
-    # A0 = np.array([[1, 1], [5, 9]])
-    # b0 = np.array([6, 45])
-    # c0 = np.array([5, 8])
-    # sense = ["<", "<"]
-    # VType = ["Z", "Z"]
-
-    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType)
+    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType, maximize=True)
 
     A, b, cuts_a, cuts_b = normalized(A, b, cuts_a, cuts_b)
 
