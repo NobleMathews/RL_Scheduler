@@ -68,7 +68,17 @@ def gurobi_solve(A, b, c, sense, Method=0, maximize=True):
     X = m.addVars(
         varrange, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS, obj=c, name="X"
     )
-    _C = m.addConstrs((sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange), "C")
+    _C = m.addConstrs(
+        (
+            sum(A[i, j] * X[j] for j in varrange) >= b[i]
+            if sense[i] == ">"
+            else
+            sum(A[i, j] * X[j] for j in varrange) <= b[i]
+            if sense[i] == "<"
+            else
+            sum(A[i, j] * X[j] for j in varrange) == b[i]
+            for i in crange
+        ), "C")
     # _C_e = m.addConstrs(
     #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="), "C"
     # )
@@ -105,10 +115,11 @@ def gurobi_solve(A, b, c, sense, Method=0, maximize=True):
     # cb1 = [x for x in _C_l if _C_l[x].getAttr("CBasis") == 0]
     # cb2 = [x for x in _C_g if _C_g[x].getAttr("CBasis") == 0]
     # cb3 = [x for x in _C_e if _C_e[x].getAttr("CBasis") == 0]
+    # cb = cb1 + cb2 + cb3
     cb = []
     for x in _C:
-        # RC.append(-1*_C[x].getAttr("Pi"))
-        # solution.append(_C[x].Slack)
+        RC.append(-1 * _C[x].getAttr("Pi"))
+        solution.append(_C[x].Slack)
         if _C[x].getAttr("CBasis") == 0:
             cb.append(x)
     solution = np.asarray(solution)
@@ -131,7 +142,7 @@ def roundmarrays(x, delta=1e-7):
 def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     m, n = A.shape
     assert m == b.size
-    assert n == RC.size
+    # assert n == RC.size
     B = A[:, basis_index]
     if len(identity_index):
         B = np.concatenate((B, np.eye(m)[:, identity_index]), axis=1)
@@ -141,8 +152,10 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
         print("basisindex length:", basis_index.size)
         print("Ashape:", A.shape)
         raise ValueError
-    x = np.dot(INV, b)
-    A_ = np.dot(INV, A)
+    A_tilde = np.column_stack((A, np.eye(m)))
+    b_tilde = b
+    x = np.dot(INV, b_tilde)
+    A_ = np.dot(INV, A_tilde)
     firstrow = np.append(-obj, RC)
     secondrow = np.column_stack((x, A_))
     tab = np.vstack((firstrow, secondrow))
@@ -152,8 +165,6 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
 # def get_row_integrality(integrality, basis_index, tab):
 #     b_col_tab = basis_index + 1
 #     tab[:,b_col_tab]
-
-
 
 
 def compute_state(A, b, c, sense, integrality, maximize=True):
@@ -170,14 +181,14 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
         else:
             factor.append(1)
     #         np.delete(np.eye(m)*np.array(factor)[:, None],delete, 1)
-    delete = []
-    A_tilde = np.column_stack((A, np.eye(m) * np.array(factor)[:, None]))
-    b_tilde = b
-    c_tilde = np.append(c, np.zeros(m - len(delete)))
-    # A_tilde = A
+    # delete = []
+    # A_tilde = np.column_stack((A, np.eye(m) * np.array(factor)[:, None]))
     # b_tilde = b
-    # c_tilde = c
-    obj, sol, basis_index, identity_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde, sense)
+    # c_tilde = np.append(c, np.zeros(m - len(delete)))
+    A_tilde = A
+    b_tilde = b
+    c_tilde = c
+    obj, sol, basis_index, identity_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde, sense, maximize=maximize)
     tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index, identity_index)
     tab = roundmarrays(tab)
     x = tab[:, 0]
@@ -194,7 +205,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
             break
         # row i -> basis of which
         # Sol => Integrality check  and integrality[i] != "C"
-        if i != 0 and integrality[i-1] != "C":
+        if i != 0 and integrality[i - 1] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # fractional rows used to compute cut
                 cut_a, cut_b, sense = generatecutzeroth(tab[i, :], n)
