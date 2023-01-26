@@ -1,3 +1,5 @@
+import json
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -139,6 +141,13 @@ def normalized(A, b, E, d):
     return norm_A, norm_b, norm_E, norm_d
 
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
 if __name__ == "__main__":
     lr = 1e-2
     # initialize networks
@@ -149,41 +158,63 @@ if __name__ == "__main__":
     # min {cx | Ax <= b, x >= 0, x integer}
     # (411, 323)
 
-    model = gb.read("model.lp")
-    sense = model.getAttr("Sense", model.getConstrs())
-    VType = model.getAttr("VType", model.getVars())
-    VarName = model.getAttr("VarName", model.getVars())
+    gen_problem_files = False
+    instance = "instances/kondili.json"
 
-    VNameType = [f"{var}_{typ}" for var, typ in zip(VarName, VType)]
-    index = model.getAttr("ConstrName", model.getConstrs())
+    if gen_problem_files:
 
-    A0 = model.getA().toarray()
-    # * factor[:, None]
-    b0 = np.asarray(model.getAttr("RHS", model.getConstrs())) \
-        # * factor
-    c0 = np.asarray(model.getAttr("Obj", model.getVars()))
-    maximize = True
+        model = gb.read("model.lp")
+        sense = model.getAttr("Sense", model.getConstrs())
+        VType = model.getAttr("VType", model.getVars())
+        VarName = model.getAttr("VarName", model.getVars())
 
-    # df = pd.DataFrame(A0, index=index, columns=VNameType)
-    # df['B0'] = b0
-    # df.loc["c0"] = np.append(c0, 0)
-    # df.to_html('df.html', index=True, header=True)
+        VNameType = [f"{var}_{typ}" for var, typ in zip(VarName, VType)]
+        index = model.getAttr("ConstrName", model.getConstrs())
 
-    # load_dir = "instances/train_100_n60_m60"
-    # idx = 0
-    # A0 = np.load('{}/A_{}.npy'.format(load_dir, idx))
-    # b0 = np.load('{}/b_{}.npy'.format(load_dir, idx))
-    # c0 = np.load('{}/c_{}.npy'.format(load_dir, idx))
-    # sense = None
+        A0 = model.getA().toarray()
+        # * factor[:, None]
+        b0 = np.asarray(model.getAttr("RHS", model.getConstrs())) \
+            # * factor
+        c0 = np.asarray(model.getAttr("Obj", model.getVars()))
+        maximize = True
 
-    # A0 = np.array([[7, -2], [0, 1], [2, -2]])
-    # b0 = np.array([14, 3, 3])
-    # c0 = np.array([4, -1])
-    # sense = ["<", "<", "<"]
-    # VType = ["Z", "C"]
-    # maximize = True
+        # df = pd.DataFrame(A0, index=index, columns=VNameType)
+        # df['B0'] = b0
+        # df.loc["c0"] = np.append(c0, 0)
+        # df.to_html('df.html', index=True, header=True)
 
-    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType, maximize=True)
+        # load_dir = "instances/train_100_n60_m60"
+        # idx = 0
+        # A0 = np.load('{}/A_{}.npy'.format(load_dir, idx))
+        # b0 = np.load('{}/b_{}.npy'.format(load_dir, idx))
+        # c0 = np.load('{}/c_{}.npy'.format(load_dir, idx))
+        # sense = None
+
+        # A0 = np.array([[7, -2], [0, 1], [2, -2]])
+        # b0 = np.array([14, 3, 3])
+        # c0 = np.array([4, -1])
+        # sense = ["<", "<", "<"]
+        # VType = ["Z", "C"]
+        # maximize = True
+
+        data_format = {
+            "A0": A0, "b0": b0, "c0": c0, "sense": sense, "VType": VType, "maximize": maximize
+        }
+
+        with open(instance, "w") as outputfile:
+            json.dump(data_format, outputfile, cls=NumpyEncoder)
+
+    with open(instance, "r") as inputfile:
+        input_data = json.load(inputfile)
+
+    A0 = np.asarray(input_data["A0"])
+    b0 = np.asarray(input_data["b0"])
+    c0 = np.asarray(input_data["c0"])
+    sense = input_data["sense"]
+    VType = input_data["VType"]
+    maximize = input_data["maximize"]
+
+    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType, maximize=maximize)
 
     A, b, cuts_a, cuts_b = normalized(A, b, cuts_a, cuts_b)
 

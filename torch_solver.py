@@ -58,6 +58,80 @@ def updatetab(tab, cut_a, cut_b, basis_index):
     return newtab, basis_index, Anew, bnew
 
 
+def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
+    if maximize:
+        c = -c  # Gurobi default is maximization
+    varrange = range(c.size)
+    crange = range(b.size)
+    m = Model("LP")
+    m.params.OutputFlag = 0  # suppress output
+    X = m.addVars(
+        varrange, lb=0.0, ub=GRB.INFINITY, vtype=[GRB.CONTINUOUS if vt == "C" else GRB.BINARY for vt in vtype], obj=c,
+        name="X"
+    )
+    _C = m.addConstrs(
+        (
+            sum(A[i, j] * X[j] for j in varrange) >= b[i]
+            if sense[i] == ">"
+            else
+            sum(A[i, j] * X[j] for j in varrange) <= b[i]
+            if sense[i] == "<"
+            else
+            sum(A[i, j] * X[j] for j in varrange) == b[i]
+            for i in crange
+        ), "C")
+    # _C_e = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="), "C"
+    # )
+    # _C_l = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) <= b[i] for i in crange if sense and sense[i] == "<"), "C"
+    # )
+    # _C_g = m.addConstrs(
+    #     (sum(A[i, j] * X[j] for j in varrange) >= b[i] for i in crange if sense and sense[i] == ">"), "C"
+    # )
+    # _C = m.addConstrs(
+    #     (get_constr(A, b, X, i, varrange, sense) for i in crange), "C"
+    # )
+    # chained = chain.from_iterable(
+    #     [(sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="),
+    #      (sum(A[i, j] * X[j] for j in varrange) <= b[i] for i in crange if sense and sense[i] == "<"),
+    #      (sum(A[i, j] * X[j] for j in varrange) >= b[i] for i in crange if sense and sense[i] == ">")]
+    # )
+    # _C = m.addConstrs(chained, "C")
+    m.params.Method = -1  # primal simplex Method = 0
+    # print('start optimizing...')
+    m.optimize()
+    # obtain results
+    solution = []
+    # basis_index = []
+    # RC = []
+    for i in X:
+        solution.append(X[i].X)
+        # RC.append(X[i].getAttr("RC"))
+        # if X[i].getAttr("VBasis") == 0:
+        #     basis_index.append(i)
+    # for i in _C:
+    #     if _C[i].getAttr("CBasis") == 0:
+    #         print(i)
+    # cb1 = [x for x in _C_l if _C_l[x].getAttr("CBasis") == 0]
+    # cb2 = [x for x in _C_g if _C_g[x].getAttr("CBasis") == 0]
+    # cb3 = [x for x in _C_e if _C_e[x].getAttr("CBasis") == 0]
+    # cb = cb1 + cb2 + cb3
+    # cb = []
+    # for x in _C:
+    #     RC.append(-1 * _C[x].getAttr("Pi"))
+    #     solution.append(_C[x].Slack)
+    #     if _C[x].getAttr("CBasis") == 0:
+    #         cb.append(x)
+    # solution = np.asarray(solution)
+    # RC = np.asarray(RC)
+    # basis_index = np.asarray(basis_index)
+    # identity_index = np.asarray(cb)
+    # # print('solving completes')
+    # , basis_index, identity_index, RC
+    return m.ObjVal, solution
+
+
 def gurobi_solve(A, b, c, sense, Method=0, maximize=True):
     if maximize:
         c = -c  # Gurobi default is maximization
@@ -170,16 +244,18 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
 def compute_state(A, b, c, sense, integrality, maximize=True):
     m, n = A.shape
     assert m == b.size and n == c.size
-    factor = []
-    delete = []
-    for i, x in enumerate(sense):
-        if x == "=":
-            delete.append(i)
-            factor.append(0)
-        elif x == ">":
-            factor.append(-1)
-        else:
-            factor.append(1)
+
+    # factor = []
+    # delete = []
+    # for i, x in enumerate(sense):
+    #     if x == "=":
+    #         delete.append(i)
+    #         factor.append(0)
+    #     elif x == ">":
+    #         factor.append(-1)
+    #     else:
+    #         factor.append(1)
+
     #         np.delete(np.eye(m)*np.array(factor)[:, None],delete, 1)
     # delete = []
     # A_tilde = np.column_stack((A, np.eye(m) * np.array(factor)[:, None]))
