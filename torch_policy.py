@@ -2,6 +2,7 @@ import json
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 import pandas as pd
 import gurobipy as gb
@@ -24,6 +25,7 @@ class LstmNetwork(nn.Module):
     def forward(self, inp):
         _hidden = self.init_hidden()
         inputs = torch.FloatTensor(inp).view(1, -1, self.input_size)
+        # inputs = torch.unsqueeze(torch.FloatTensor(inp), 0)
         output, _ = self.lstm(inputs)
         # output[-1] is same as last hidden state
         output = output[-1].reshape(-1, self.hidden_size)
@@ -37,21 +39,44 @@ class LstmNetwork(nn.Module):
 
 
 class AttentionNetwork(nn.Module):
-    def __init__(self, input_size, hidden_size, hidden_size2):
+    # input_dim = 12
+    # h1 lstm_hidden = 10
+    # h2 dense_hidden = 64
+    def __init__(self, input_size, n_embed, head_size):
         super(AttentionNetwork, self).__init__()
-        # constraint and cuts dimension
         self.input_size = int(input_size)
-        self.hidden_size = int(hidden_size)
-        self.hidden_size2 = int(hidden_size2)
-        self.lstm1 = LstmNetwork(input_size, hidden_size)
-        self.lstm2 = LstmNetwork(input_size, hidden_size)
+        self.hidden_size = int(n_embed)
+        self.hidden_size2 = int(head_size)
+        # constraint and cuts dimension
+        self.lstm_enc1 = nn.LSTM(1, input_size)
+        self.lstm_enc2 = nn.LSTM(1, input_size)
+
+        self.lstm1 = LstmNetwork(input_size, n_embed)
+        self.lstm2 = LstmNetwork(input_size, n_embed)
+
         self.linear1 = nn.Linear(self.hidden_size, self.hidden_size2)
         self.linear2 = nn.Linear(self.hidden_size2, self.hidden_size2)
         self.tanh = nn.Tanh()
 
+        # self.A_key = nn.Linear(n_embed, head_size, bias=False)
+        # self.A_query = nn.Linear(n_embed, head_size, bias=False)
+        # self.A_value = nn.Linear(n_embed, head_size, bias=False)
+        #
+        # self.D_key = nn.Linear(n_embed, head_size, bias=False)
+        # self.D_query = nn.Linear(n_embed, head_size, bias=False)
+        # self.D_value = nn.Linear(n_embed, head_size, bias=False)
+        #
+        # self.dropout = nn.Dropout()
+        # # self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        # #
+        # # self.dropout = nn.Dropout(dropout)
+
     def forward(self, constraints, cuts):
         constraints = torch.FloatTensor(constraints)
         cuts = torch.FloatTensor(cuts)
+
+        constraints = torch.stack([self.lstm_enc1(constr.view(1, -1, 1))[0][0][-1] for constr in constraints])
+        cuts = torch.stack([self.lstm_enc1(cut.view(1, -1, 1))[0][0][-1] for cut in cuts])
 
         # lstm
         A_embed = self.lstm1.forward(constraints)
@@ -60,6 +85,32 @@ class AttentionNetwork(nn.Module):
         # dense
         A = self.linear2(self.tanh(self.linear1(A_embed)))
         D = self.linear2(self.tanh(self.linear1(D_embed)))
+
+        # A_T, A_C = A_embed.shape
+        # # A_tril = torch.tril(torch.ones(A_T, A_T))
+        # k = self.A_key(A_embed)  # (B,T,C)
+        # q = self.A_query(A_embed)  # (B,T,C)
+        # # compute attention scores ("affinities")
+        # A_wei = q @ k.transpose(-2, -1) * A_C ** -0.5  # (B, T, C) @ (B, C, T) -> (B, T, T)
+        # # A_wei = A_wei.masked_fill(A_tril[:A_T, :A_T] == 0, float('-inf'))  # (B, T, T)
+        # A_wei = F.softmax(A_wei, dim=-1)  # (B, T, T)
+        # A_wei = self.dropout(A_wei)
+        # # perform the weighted aggregation of the values
+        # A_v = self.A_value(A_embed)  # (B,T,C)
+        # A_out = A_wei @ A_v  # (B, T, T) @ (B, T, C) -> (B, T, C)
+        #
+        # D_T, D_C = D_embed.shape
+        # k = self.D_key(D_embed)  # (B,T,C)
+        # q = self.D_query(D_embed)  # (B,T,C)
+        # # compute attention scores ("affinities")
+        # D_wei = q @ k.transpose(-2, -1) * D_C ** -0.5  # (B, T, C) @ (B, C, T) -> (B, T, T)
+        # # D_tril = torch.tril(torch.ones(D_T, D_T))
+        # # D_wei = D_wei.masked_fill(D_tril[:D_T, :D_T] == 0, float('-inf'))  # (B, T, T)
+        # D_wei = F.softmax(D_wei, dim=-1)  # (B, T, T)
+        # D_wei = self.dropout(D_wei)
+        # # perform the weighted aggregation of the values
+        # D_v = self.D_value(D_embed)  # (B,T,C)
+        # D_out = D_wei @ D_v  # (B, T, T) @ (B, T, C) -> (B, T, C)
 
         # attention
         # noinspection PyArgumentList
@@ -162,7 +213,6 @@ if __name__ == "__main__":
     instance = "instances/kondili.json"
 
     if gen_problem_files:
-
         model = gb.read("model.lp")
         sense = model.getAttr("Sense", model.getConstrs())
         VType = model.getAttr("VType", model.getVars())
@@ -214,7 +264,7 @@ if __name__ == "__main__":
     VType = input_data["VType"]
     maximize = input_data["maximize"]
 
-    A, b, cuts_a, cuts_b, done, oldobj, x, tab = compute_state(A0, b0, c0, sense, VType, maximize=maximize)
+    A, b, cuts_a, cuts_b, done, oldobj, A_embed, tab, _ = compute_state(A0, b0, c0, sense, VType, maximize=maximize)
 
     A, b, cuts_a, cuts_b = normalized(A, b, cuts_a, cuts_b)
 

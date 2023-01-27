@@ -34,8 +34,8 @@ def generatecutzeroth(row, p):
                 coeff[j] += aj / f0
             else:
                 coeff[j] += -1 * aj / (1 - f0)
-    sense = ">"
-    return coeff, 1, sense
+    # sense = ">"
+    return coeff, 1
 
 
 def updatetab(tab, cut_a, cut_b, basis_index):
@@ -137,6 +137,7 @@ def gurobi_solve(A, b, c, sense, Method=0, maximize=True):
         c = -c  # Gurobi default is maximization
     varrange = range(c.size)
     crange = range(b.size)
+    # assert b.size == len(sense)
     m = Model("LP")
     m.params.OutputFlag = 0  # suppress output
     X = m.addVars(
@@ -274,6 +275,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
         done = False
     cuts_a = []
     cuts_b = []
+    cut_rows = []
     # which row corresponds to which variable - verify while solving
     # row_status = np.asarray(integrality)[basis_index[:len(integrality)]]
     for i in range(x.size):
@@ -284,7 +286,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
         if i != 0 and integrality[i - 1] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # fractional rows used to compute cut
-                cut_a, cut_b, sense = generatecutzeroth(tab[i, :], n)
+                cut_a, cut_b = generatecutzeroth(tab[i, :], n)
                 # a^T x + e^T y >= d
                 assert cut_a.size == m + n
                 a = cut_a[0:n]
@@ -293,6 +295,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
                 newb = np.dot(e, b) - cut_b
                 cuts_a.append(newA)
                 cuts_b.append(newb)
+                cut_rows.append(i)
     cuts_a, cuts_b = np.array(cuts_a), np.array(cuts_b)
     # sense cuts a  <= cuts b
-    return A, b, cuts_a, cuts_b, done, obj, x, tab
+    return A, b, cuts_a, cuts_b, done, obj, x, tab, cut_rows

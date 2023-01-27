@@ -39,35 +39,36 @@ class GurobiOriginalEnv(object):
     #	print('the env needs to be initialized with nontrivial ip')
 
     def check_init(self):
-        _, done = self._reset()
+        _, done, _ = self._reset()
         return done
 
     def _reset(self):
-        self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.oldobj, self.x, self.tab = compute_state(self.A0,
+        self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.oldobj, self.x, self.tab, self.cut_rows = compute_state(self.A0,
                                                                                                            self.b0,
                                                                                                            self.c0,
                                                                                                            self.sense0,
                                                                                                            self.VType0,
                                                                                                            self.maximize)
-        return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), self.done
+        return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), self.done, self.cut_rows
 
     def reset(self):
-        s, d = self._reset()
-        return s
+        s, d, rows = self._reset()
+        return s, rows
 
     def step(self, action):
         cut_a, cut_b = self.cuts_a[action, :], self.cuts_b[action]
         self.A = np.vstack((self.A, cut_a))
         self.b = np.append(self.b, cut_b)
+        self.sense.append("<")
         try:
-            self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.newobj, self.x, self.tab = compute_state(self.A,
-                                                                                                               self.b,
-                                                                                                               self.c0)
+            self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.newobj, self.x, self.tab, self.cut_rows = compute_state(self.A,self.b, self.c,
+                                                                                                            self.sense, self.VType, self.maximize)
             if self.reward_type == 'simple':
                 reward = -1.0
             elif self.reward_type == 'obj':
                 reward = np.abs(self.oldobj - self.newobj)
-        except:
+        except Exception as e:
+            print(e)
             print('error in lp iteration')
             self.done = True
             reward = 0.0
@@ -192,8 +193,8 @@ def discounted_rewards(r, gamma):
 
 if __name__ == "__main__":
 
-    training = True
-    explore = True
+    training = False
+    explore = False
     PATH = "models/try1.pt"
     # PATH = "models/easy_config_best_model_3.pt"
     # PATH = "models/hard_config_best_model3.pt"
@@ -228,7 +229,7 @@ if __name__ == "__main__":
         acts = []
         rews = []
 
-        s = env.reset()  # samples a random instance every time env.reset() is called
+        s, cut_rows = env.reset()  # samples a random instance every time env.reset() is called
         d = False
         repisode = 0
 
@@ -252,6 +253,7 @@ if __name__ == "__main__":
 
             # compute probability distribution
             prob = actor.compute_prob(curr_constraints, available_cuts)
+            # [cut_rows, :]
             prob = prob / np.sum(prob)
 
             explore_rate = min_explore_rate + \
