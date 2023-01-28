@@ -266,6 +266,8 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
     b_tilde = b
     c_tilde = c
     obj, sol, basis_index, identity_index, rc = gurobi_solve(A_tilde, b_tilde, c_tilde, sense, maximize=maximize)
+    print(len(A))
+    print(obj)
     tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index, identity_index)
     tab = roundmarrays(tab)
     x = tab[:, 0]

@@ -275,4 +275,4 @@ if __name__ == "__main__":
     # compute probability distribution
     prob = actor.compute_prob(curr_constraints, available_cuts)
     prob /= np.sum(prob)
-    print(prob)
+    # print(prob)

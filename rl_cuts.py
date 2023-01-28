@@ -166,8 +166,8 @@ try_config = {
 
 
 def normalization(A, b, E, d):
-    print(A)
-    print(E)
+    # print(A)
+    # print(E)
     all_coeff = np.concatenate((A, E), axis=0)
     all_constraint = np.concatenate((b, d))
     max_1, max_2 = np.max(all_coeff), np.max(all_constraint)
@@ -193,8 +193,8 @@ def discounted_rewards(r, gamma):
 
 if __name__ == "__main__":
 
-    training = False
-    explore = False
+    training = True
+    explore = True
     PATH = "models/try1.pt"
     # PATH = "models/easy_config_best_model_3.pt"
     # PATH = "models/hard_config_best_model3.pt"
