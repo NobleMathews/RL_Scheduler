@@ -232,7 +232,7 @@ if __name__ == "__main__":
     sigma = 0.2
     gamma = 0.99  # discount
     rrecord = []
-    for e in range(10000):
+    for e in range(100000):
         print(f"Starting Episode {e}")
         # gym loop
         # To keep a record of states actions and reward for each episode
@@ -319,8 +319,8 @@ if __name__ == "__main__":
             #                       1)  # s[-1].size shows the number of actions, i.e., cuts available at state s
             A, b, c0, cuts_a, cuts_b, x_LP = new_state
 
-            r = r + option_penalty[a]
             og_r = r
+            r = r + option_penalty[a]
 
             obss_constraint.append(curr_constraints)
             obss_cuts.append(available_cuts)
@@ -328,9 +328,9 @@ if __name__ == "__main__":
             rews.append(r)
             s = new_state
             repisode += r
-            og_repisode += r
+            og_repisode += og_r
 
-            if repisode < 0:
+            if r < 0:
                 d = True
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
@@ -340,7 +340,7 @@ if __name__ == "__main__":
         print("episode: ", e)
         print("sum reward: ", repisode)
         # append r to a file called reward_{i}.txt
-        with open(f"reward_{e}.txt", "a") as f:
+        with open(f"reward.txt", "a") as f:
             f.write(str(repisode) + "\t" + str(og_repisode) + "\n")
         # print(x_LP)
 
