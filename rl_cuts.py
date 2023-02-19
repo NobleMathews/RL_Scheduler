@@ -171,7 +171,7 @@ try_config = {
     "load_dir": 'instances/kondili.json',
     # this is the location of the randomly generated instances (you may specify a different directory)
     "idx_list": list(range(1)),  # take the first n instances from the directory
-    "timelimit": 1000,  # the maximum horizon length
+    "timelimit": 500,  # the maximum horizon length
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
@@ -205,7 +205,7 @@ def discounted_rewards(r, gamma):
 if __name__ == "__main__":
 
     training = True
-    explore = False
+    explore = True
     PATH = "models/try1.pt"
     # PATH = "models/easy_config_best_model_3.pt"
     # PATH = "models/hard_config_best_model3.pt"
@@ -219,8 +219,8 @@ if __name__ == "__main__":
     dense_hidden = 64
 
     explore_rate = 1.0
-    min_explore_rate = 0.01
-    max_explore_rate = 0.5
+    min_explore_rate = 0.05
+    max_explore_rate = 0.6
     explore_decay_rate = 0.01
     best_rew = 0
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     sigma = 0.2
     gamma = 0.99  # discount
     rrecord = []
-    for e in range(100000):
+    for e in range(1000):
         print(f"Starting Episode {e}")
         # gym loop
         # To keep a record of states actions and reward for each episode
@@ -300,13 +300,22 @@ if __name__ == "__main__":
             # normalize option rewards
             option_rewards = np.array(option_rewards)
             option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
-            option_penalty = 100 * option_rewards
+            # option_penalty = 100 * option_rewards
+
+            # get index of the top 5% of options with most positive rewards
+            top_10_percent = int(0.05 * len(option_rewards))
+            if top_10_percent == 0:
+                top_10_percent = 1
+            top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
+
 
             # epsilon greedy for exploration
             if training and explore:
                 random_num = random.uniform(0, 1)
                 if random_num <= explore_rate:
-                    a = np.random.randint(0, s[-2].size, 1)
+                    # a = np.random.randint(0, s[-2].size, 1)
+                    # randomly choose between the top 10% of options
+                    a = np.random.choice(top_10_percent_indices, 1)
                 else:
                     # a = np.argmax(prob)
                     a = [np.random.choice(s[-2].size, p=prob.flatten())]
@@ -320,7 +329,11 @@ if __name__ == "__main__":
             A, b, c0, cuts_a, cuts_b, x_LP = new_state
 
             og_r = r
-            r = r + option_penalty[a]
+            if option_rewards[a] < 0:
+                # penalize choosing a cut that makes the problem bigger
+                r = r + option_rewards[a] * 10
+            else:
+                r = r + option_rewards[a]
 
             obss_constraint.append(curr_constraints)
             obss_cuts.append(available_cuts)
@@ -330,7 +343,9 @@ if __name__ == "__main__":
             repisode += r
             og_repisode += og_r
 
-            if r < 0:
+            if repisode < 0:
+                # penalize not solving the problem
+                repisode = repisode - 1000
                 d = True
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
