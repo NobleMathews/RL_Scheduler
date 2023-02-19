@@ -1,10 +1,13 @@
 import json
+import os
+import pickle
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+
 import random
 
 from torch_policy import Policy
@@ -55,8 +58,14 @@ class GurobiOriginalEnv(object):
         s, d, rows = self._reset()
         return s, rows
 
-    def step(self, action):
+    def step(self, action, fake=False):
         cut_a, cut_b = self.cuts_a[action, :], self.cuts_b[action]
+        if fake:
+            _, _, _, _, _, newobj, _, _, _ = compute_state(
+                np.vstack((self.A, cut_a)), np.append(self.b, cut_b), self.c,
+                self.sense+["<"], self.VType, self.maximize)
+            reward = np.abs(self.oldobj - newobj)
+            return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), reward, self.done, {}
         self.A = np.vstack((self.A, cut_a))
         self.b = np.append(self.b, cut_b)
         self.sense.append("<")
@@ -100,9 +109,11 @@ class TimelimitWrapper(object):
         self.counter = 0
         return self.env.reset()
 
-    def step(self, action):
+    def step(self, action, fake=False):
+        if fake:
+            return self.env.step(action, fake)
         self.counter += 1
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, done, info = self.env.step(action, fake)
         if self.counter >= self.timelimit:
             done = True
         return obs, reward, done, info
@@ -125,9 +136,9 @@ class MultipleEnvs(object):
         self.env_now = self.envs[self.env_index]
         return self.env_now.reset()
 
-    def step(self, action):
+    def step(self, action, fake=False):
         assert self.env_now is not None
-        return self.env_now.step(action)
+        return self.env_now.step(action, fake)
 
 
 def make_multiple_env(load_dir, idx_list, timelimit, reward_type):
@@ -159,8 +170,8 @@ def make_multiple_env(load_dir, idx_list, timelimit, reward_type):
 try_config = {
     "load_dir": 'instances/kondili.json',
     # this is the location of the randomly generated instances (you may specify a different directory)
-    "idx_list": list(range(1)),  # take the first 20 instances from the directory
-    "timelimit": 50,  # the maximum horizon length is 50
+    "idx_list": list(range(1)),  # take the first n instances from the directory
+    "timelimit": 1000,  # the maximum horizon length
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
@@ -221,7 +232,8 @@ if __name__ == "__main__":
     sigma = 0.2
     gamma = 0.99  # discount
     rrecord = []
-    for e in range(50):
+    for e in range(10000):
+        print(f"Starting Episode {e}")
         # gym loop
         # To keep a record of states actions and reward for each episode
         obss_constraint = []  # states
@@ -232,9 +244,10 @@ if __name__ == "__main__":
         s, cut_rows = env.reset()  # samples a random instance every time env.reset() is called
         d = False
         repisode = 0
-
+        og_repisode = 0
+        i = 0
         while not d:
-
+            i = i + 1
             A, b, c0, cuts_a, cuts_b, x_LP = s
 
             # print(A)
@@ -258,6 +271,36 @@ if __name__ == "__main__":
 
             explore_rate = min_explore_rate + \
                            (max_explore_rate - min_explore_rate) * np.exp(-explore_decay_rate * (e))
+            option_rewards = []
+            # if training or explore:
+            #     for i in range(s[-2].size):
+            #         new_state, r, d, _ = env.step([i], True)
+            #         option_rewards.append(r)
+            # save a lookup table for option_rewards so it is not recomputed every run during training.
+            # Create a dictionary with key as numpy array curr_constraints and value as option_rewards
+            # Save the dictionary to a file and load it initially
+            if os.path.exists('option_rewards_dict.pickle'):
+                with open('option_rewards_dict.pickle', 'rb') as handle:
+                    option_rewards_dict = pickle.load(handle)
+            else:
+                option_rewards_dict = {}
+            if curr_constraints.tobytes() in option_rewards_dict:
+                option_rewards = option_rewards_dict[curr_constraints.tobytes()]
+            else:
+                option_rewards = []
+                # if training or explore:
+                for i in range(s[-2].size):
+                    new_state, r, d, _ = env.step([i], True)
+                    option_rewards.append(r)
+                option_rewards_dict[curr_constraints.tobytes()] = option_rewards
+            with open('option_rewards_dict.pickle', 'wb') as handle:
+                pickle.dump(option_rewards_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            option_rewards = option_rewards_dict[curr_constraints.tobytes()]
+
+            # normalize option rewards
+            option_rewards = np.array(option_rewards)
+            option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+            option_penalty = 100 * option_rewards
 
             # epsilon greedy for exploration
             if training and explore:
@@ -270,12 +313,14 @@ if __name__ == "__main__":
             else:
                 # for testing case, only sample action
                 a = [np.random.choice(s[-2].size, p=prob.flatten())]
-
             new_state, r, d, _ = env.step(list(a))
             # print('episode', e, 'step', t, 'reward', r, 'action space size', new_state[-1].size, 'action', a)
-            a = np.random.randint(0, s[-2].size,
-                                  1)  # s[-1].size shows the number of actions, i.e., cuts available at state s
+            # a = np.random.randint(0, s[-2].size,
+            #                       1)  # s[-1].size shows the number of actions, i.e., cuts available at state s
             A, b, c0, cuts_a, cuts_b, x_LP = new_state
+
+            r = r + option_penalty[a]
+            og_r = r
 
             obss_constraint.append(curr_constraints)
             obss_cuts.append(available_cuts)
@@ -283,7 +328,10 @@ if __name__ == "__main__":
             rews.append(r)
             s = new_state
             repisode += r
+            og_repisode += r
 
+            if repisode < 0:
+                d = True
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
         returns = discounted_rewards(rews, gamma)
@@ -291,7 +339,10 @@ if __name__ == "__main__":
         Js = returns + np.random.normal(0, 1, len(returns)) / sigma
         print("episode: ", e)
         print("sum reward: ", repisode)
-        print(x_LP)
+        # append r to a file called reward_{i}.txt
+        with open(f"reward_{e}.txt", "a") as f:
+            f.write(str(repisode) + "\t" + str(og_repisode) + "\n")
+        # print(x_LP)
 
         # PG update and save best model so far
         if training:
