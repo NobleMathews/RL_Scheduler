@@ -205,7 +205,7 @@ def discounted_rewards(r, gamma):
 if __name__ == "__main__":
 
     training = True
-    explore = True
+    explore = False
     PATH = "models/try1.pt"
     # PATH = "models/easy_config_best_model_3.pt"
     # PATH = "models/hard_config_best_model3.pt"
@@ -341,7 +341,7 @@ if __name__ == "__main__":
         print("sum reward: ", repisode)
         # append r to a file called reward_{i}.txt
         with open(f"reward.txt", "a") as f:
-            f.write(str(repisode) + "\t" + str(og_repisode) + "\n")
+            f.write(str(len(acts)) + "\t" + str(repisode) + "\t" + str(og_repisode) + "\n")
         # print(x_LP)
 
         # PG update and save best model so far
