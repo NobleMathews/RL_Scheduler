@@ -3,3 +3,4 @@ numpy
 pyomo
 scipy
 gurobipy
+torchviz

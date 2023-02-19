@@ -1,3 +1,5 @@
 ._*
 instances
 .idea
+.env
+__pycache__
