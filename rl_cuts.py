@@ -387,3 +387,6 @@ if __name__ == "__main__":
             if repisode >= best_rew:
                 best_rew = repisode
                 torch.save(actor, PATH)
+
+            loss = actor.train(obss_constraint, obss_cuts, acts, Js)
+            print("Loss: ", loss)
