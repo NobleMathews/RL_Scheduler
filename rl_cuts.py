@@ -1,4 +1,6 @@
 import json
+import ray
+import psutil
 import os
 import pickle
 
@@ -175,6 +177,11 @@ try_config = {
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
+@ray.remote
+def get_option_reward(i, env):
+    new_state, r, d, _ = env.step([i], True)
+    return r
+
 
 def normalization(A, b, E, d):
     # print(A)
@@ -287,11 +294,27 @@ if __name__ == "__main__":
             if curr_constraints.tobytes() in option_rewards_dict:
                 option_rewards = option_rewards_dict[curr_constraints.tobytes()]
             else:
-                option_rewards = []
                 # if training or explore:
-                for i in range(s[-2].size):
-                    new_state, r, d, _ = env.step([i], True)
-                    option_rewards.append(r)
+                # parallelize this loop with as many workers as cpu cores
+                # for i in range(s[-2].size):
+                #     new_state, r, d, _ = env.step([i], True)
+                #     option_rewards.append(r)
+
+                # Initialize the ray runtime
+                ray.init()
+
+                # Get the number of CPU cores available on the machine
+                num_cpus = psutil.cpu_count(logical=False)
+
+                # Create a list of tasks to run in parallel
+                tasks = [get_option_reward.remote(i, env) for i in range(s[-2].size)]
+
+                # Use ray to fetch the results of the tasks in parallel
+                option_rewards = ray.get(tasks)
+
+                # Shut down the ray runtime
+                ray.shutdown()
+
                 option_rewards_dict[curr_constraints.tobytes()] = option_rewards
             with open('option_rewards_dict.pickle', 'wb') as handle:
                 pickle.dump(option_rewards_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
