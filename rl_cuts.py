@@ -1,8 +1,9 @@
 import json
+import logging
+
 import ray
 import psutil
 import os
-import pickle
 
 import numpy as np
 import torch
@@ -166,14 +167,14 @@ def make_multiple_env(load_dir, idx_list, timelimit, reward_type):
             GurobiOriginalEnv(A0, b0, c0, sense, VType, maximize, solution=None, reward_type=reward_type), timelimit)
         envs.append(env)
     env_final = MultipleEnvs(envs)
-    return env_final
+    return env_final, A0.shape[1]
 
 
 try_config = {
     "load_dir": 'instances/kondili.json',
     # this is the location of the randomly generated instances (you may specify a different directory)
     "idx_list": list(range(1)),  # take the first n instances from the directory
-    "timelimit": 500,  # the maximum horizon length
+    "timelimit": 10,  # the maximum horizon length
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
@@ -216,12 +217,13 @@ if __name__ == "__main__":
     PATH = "models/try1.pt"
     # PATH = "models/easy_config_best_model_3.pt"
     # PATH = "models/hard_config_best_model3.pt"
+    # input_dim = 12
 
     # create env
-    env = make_multiple_env(**try_config)
+    env, input_dim = make_multiple_env(**try_config)
+    input_dim = input_dim + 1
     lr = 1e-2
     # initialize networks
-    input_dim = 12
     lstm_hidden = 10
     dense_hidden = 64
 
@@ -239,7 +241,7 @@ if __name__ == "__main__":
     sigma = 0.2
     gamma = 0.99  # discount
     rrecord = []
-    for e in range(1000):
+    for e in range(10000):
         print(f"Starting Episode {e}")
         # gym loop
         # To keep a record of states actions and reward for each episode
@@ -286,13 +288,13 @@ if __name__ == "__main__":
             # save a lookup table for option_rewards so it is not recomputed every run during training.
             # Create a dictionary with key as numpy array curr_constraints and value as option_rewards
             # Save the dictionary to a file and load it initially
-            if os.path.exists('option_rewards_dict.pickle'):
-                with open('option_rewards_dict.pickle', 'rb') as handle:
-                    option_rewards_dict = pickle.load(handle)
+            if os.path.exists('option_rewards_dict.json'):
+                with open('option_rewards_dict.json', 'r') as f:
+                    option_rewards_dict = json.load(f)
             else:
                 option_rewards_dict = {}
-            if curr_constraints.tobytes() in option_rewards_dict:
-                option_rewards = option_rewards_dict[curr_constraints.tobytes()]
+            if str(curr_constraints.tobytes()) in option_rewards_dict:
+                option_rewards = option_rewards_dict[str(curr_constraints.tobytes())]
             else:
                 # if training or explore:
                 # parallelize this loop with as many workers as cpu cores
@@ -315,10 +317,7 @@ if __name__ == "__main__":
                 # Shut down the ray runtime
                 ray.shutdown()
 
-                option_rewards_dict[curr_constraints.tobytes()] = option_rewards
-            with open('option_rewards_dict.pickle', 'wb') as handle:
-                pickle.dump(option_rewards_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            option_rewards = option_rewards_dict[curr_constraints.tobytes()]
+                option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
 
             # normalize option rewards
             option_rewards = np.array(option_rewards)
@@ -338,9 +337,11 @@ if __name__ == "__main__":
                 if random_num <= explore_rate:
                     # a = np.random.randint(0, s[-2].size, 1)
                     # randomly choose between the top 10% of options
+                    print("manually directed picking")
                     a = np.random.choice(top_10_percent_indices, 1)
                 else:
                     # a = np.argmax(prob)
+                    print("agent probability based picking")
                     a = [np.random.choice(s[-2].size, p=prob.flatten())]
             else:
                 # for testing case, only sample action
@@ -366,10 +367,13 @@ if __name__ == "__main__":
             repisode += r
             og_repisode += og_r
 
-            if repisode < 0:
-                # penalize not solving the problem
-                repisode = repisode - 1000
-                d = True
+            # if repisode < 0:
+            #     # penalize not solving the problem
+            #     repisode = repisode - 1000
+            #     d = True
+
+        with open('option_rewards_dict.json', 'w') as f:
+            json.dump(option_rewards_dict, f)
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
         returns = discounted_rewards(rews, gamma)

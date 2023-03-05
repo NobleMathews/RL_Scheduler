@@ -24,8 +24,8 @@ class LstmNetwork(nn.Module):
 
     def forward(self, inp):
         _hidden = self.init_hidden()
-        inputs = torch.FloatTensor(inp).view(1, -1, self.input_size)
-        # inputs = torch.unsqueeze(torch.FloatTensor(inp), 0)
+        # inputs = torch.FloatTensor(inp).view(1, -1, self.input_size)
+        inputs = torch.unsqueeze(torch.FloatTensor(inp), 0)
         output, _ = self.lstm(inputs)
         # output[-1] is same as last hidden state
         output = output[-1].reshape(-1, self.hidden_size)
@@ -48,8 +48,8 @@ class AttentionNetwork(nn.Module):
         self.hidden_size = int(n_embed)
         self.hidden_size2 = int(head_size)
         # constraint and cuts dimension
-        self.lstm_enc1 = nn.LSTM(1, input_size)
-        self.lstm_enc2 = nn.LSTM(1, input_size)
+        # self.lstm_enc1 = nn.LSTM(1, input_size)
+        # self.lstm_enc2 = nn.LSTM(1, input_size)
 
         self.lstm1 = LstmNetwork(input_size, n_embed)
         self.lstm2 = LstmNetwork(input_size, n_embed)
@@ -75,8 +75,8 @@ class AttentionNetwork(nn.Module):
         constraints = torch.FloatTensor(constraints)
         cuts = torch.FloatTensor(cuts)
 
-        constraints = torch.stack([self.lstm_enc1(constr.view(1, -1, 1))[0][0][-1] for constr in constraints])
-        cuts = torch.stack([self.lstm_enc1(cut.view(1, -1, 1))[0][0][-1] for cut in cuts])
+        # constraints = torch.stack([self.lstm_enc1(constr.view(1, -1, 1))[0][0][-1] for constr in constraints])
+        # cuts = torch.stack([self.lstm_enc1(cut.view(1, -1, 1))[0][0][-1] for cut in cuts])
 
         # lstm
         A_embed = self.lstm1.forward(constraints)
