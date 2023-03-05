@@ -272,13 +272,13 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
     tab = roundmarrays(tab)
     x = tab[:, 0]
     # print(tab)
-    done = True
+    # done = True
     # if np.sum(abs(np.round(x) - x) > 1e-2) >= 1:
     #     done = False
     cuts_a = []
     cuts_b = []
     cut_rows = []
-    count = 0
+    done = 0
     # which row corresponds to which variable - verify while solving
     # row_status = np.asarray(integrality)[basis_index[:len(integrality)]]
     # print(np.unique(integrality, return_counts=True))
@@ -290,8 +290,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
         if i != 0 and integrality[i - 1] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # print(abs(round(x[i]) - x[i]))
-                count += 1
-                done = False
+                done += 1
                 # fractional rows used to compute cut
                 cut_a, cut_b = generatecutzeroth(tab[i, :], n)
                 # a^T x + e^T y >= d
@@ -303,7 +302,7 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
                 cuts_a.append(newA)
                 cuts_b.append(newb)
                 cut_rows.append(i)
-    print(count)
+    print(done)
     cuts_a, cuts_b = np.array(cuts_a), np.array(cuts_b)
     # sense cuts a  <= cuts b
     return A, b, cuts_a, cuts_b, done, obj, x, tab, cut_rows

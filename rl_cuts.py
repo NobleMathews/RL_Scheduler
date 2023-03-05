@@ -82,7 +82,7 @@ class GurobiOriginalEnv(object):
         except Exception as e:
             print(e)
             print('error in lp iteration')
-            self.done = True
+            self.done = 0
             reward = 0.0
         self.oldobj = self.newobj
         self.A, self.b, self.cuts_a, self.cuts_b = map(roundmarrays, [self.A, self.b, self.cuts_a, self.cuts_b])
@@ -118,7 +118,7 @@ class TimelimitWrapper(object):
         self.counter += 1
         obs, reward, done, info = self.env.step(action, fake)
         if self.counter >= self.timelimit:
-            done = True
+            done = 0
         return obs, reward, done, info
 
 
@@ -229,7 +229,7 @@ if __name__ == "__main__":
 
     explore_rate = 1.0
     min_explore_rate = 0.05
-    max_explore_rate = 0.6
+    max_explore_rate = 0.1
     explore_decay_rate = 0.01
     best_rew = 0
 
@@ -251,11 +251,11 @@ if __name__ == "__main__":
         rews = []
 
         s, cut_rows = env.reset()  # samples a random instance every time env.reset() is called
-        d = False
+        d = 1
         repisode = 0
         og_repisode = 0
         i = 0
-        while not d:
+        while d != 0:
             i = i + 1
             A, b, c0, cuts_a, cuts_b, x_LP = s
 
@@ -280,69 +280,71 @@ if __name__ == "__main__":
 
             explore_rate = min_explore_rate + \
                            (max_explore_rate - min_explore_rate) * np.exp(-explore_decay_rate * (e))
-            option_rewards = []
-            # if training or explore:
-            #     for i in range(s[-2].size):
-            #         new_state, r, d, _ = env.step([i], True)
-            #         option_rewards.append(r)
-            # save a lookup table for option_rewards so it is not recomputed every run during training.
-            # Create a dictionary with key as numpy array curr_constraints and value as option_rewards
-            # Save the dictionary to a file and load it initially
-            if os.path.exists('option_rewards_dict.json'):
-                with open('option_rewards_dict.json', 'r') as f:
-                    option_rewards_dict = json.load(f)
-            else:
-                option_rewards_dict = {}
-            if str(curr_constraints.tobytes()) in option_rewards_dict:
-                option_rewards = option_rewards_dict[str(curr_constraints.tobytes())]
-            else:
-                # if training or explore:
-                # parallelize this loop with as many workers as cpu cores
-                # for i in range(s[-2].size):
-                #     new_state, r, d, _ = env.step([i], True)
-                #     option_rewards.append(r)
-
-                # Initialize the ray runtime
-                ray.init()
-
-                # Get the number of CPU cores available on the machine
-                num_cpus = psutil.cpu_count(logical=False)
-
-                # Create a list of tasks to run in parallel
-                tasks = [get_option_reward.remote(i, env) for i in range(s[-2].size)]
-
-                # Use ray to fetch the results of the tasks in parallel
-                option_rewards = ray.get(tasks)
-
-                # Shut down the ray runtime
-                ray.shutdown()
-
-                option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
-
-            # normalize option rewards
-            option_rewards = np.array(option_rewards)
-            option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
-            # option_penalty = 100 * option_rewards
-
-            # get index of the top 5% of options with most positive rewards
-            top_10_percent = int(0.05 * len(option_rewards))
-            if top_10_percent == 0:
-                top_10_percent = 1
-            top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
+            # option_rewards = []
+            # # if training or explore:
+            # #     for i in range(s[-2].size):
+            # #         new_state, r, d, _ = env.step([i], True)
+            # #         option_rewards.append(r)
+            # # save a lookup table for option_rewards so it is not recomputed every run during training.
+            # # Create a dictionary with key as numpy array curr_constraints and value as option_rewards
+            # # Save the dictionary to a file and load it initially
+            # if os.path.exists('option_rewards_dict.json'):
+            #     with open('option_rewards_dict.json', 'r') as f:
+            #         option_rewards_dict = json.load(f)
+            # else:
+            #     option_rewards_dict = {}
+            # if str(curr_constraints.tobytes()) in option_rewards_dict:
+            #     option_rewards = option_rewards_dict[str(curr_constraints.tobytes())]
+            # else:
+            #     # if training or explore:
+            #     # parallelize this loop with as many workers as cpu cores
+            #     # for i in range(s[-2].size):
+            #     #     new_state, r, d, _ = env.step([i], True)
+            #     #     option_rewards.append(r)
+            #
+            #     # Initialize the ray runtime
+            #     ray.init()
+            #
+            #     # Get the number of CPU cores available on the machine
+            #     num_cpus = psutil.cpu_count(logical=False)
+            #
+            #     # Create a list of tasks to run in parallel
+            #     tasks = [get_option_reward.remote(i, env) for i in range(s[-2].size)]
+            #
+            #     # Use ray to fetch the results of the tasks in parallel
+            #     option_rewards = ray.get(tasks)
+            #
+            #     # Shut down the ray runtime
+            #     ray.shutdown()
+            #
+            #     option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
+            #
+            # # normalize option rewards
+            # option_rewards = np.array(option_rewards)
+            # option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+            # # option_penalty = 100 * option_rewards
+            #
+            # # get index of the top 5% of options with most positive rewards
+            # top_10_percent = int(0.05 * len(option_rewards))
+            # if top_10_percent == 0:
+            #     top_10_percent = 1
+            # top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
 
 
             # epsilon greedy for exploration
             if training and explore:
                 random_num = random.uniform(0, 1)
                 if random_num <= explore_rate:
-                    # a = np.random.randint(0, s[-2].size, 1)
-                    # randomly choose between the top 10% of options
                     print("manually directed picking")
-                    a = np.random.choice(top_10_percent_indices, 1)
+                    a = np.random.randint(0, s[-2].size, 1)
+                    # randomly choose between the top 10% of options
+                    # a = np.random.choice(top_10_percent_indices, 1)
                 else:
-                    # a = np.argmax(prob)
                     print("agent probability based picking")
-                    a = [np.random.choice(s[-2].size, p=prob.flatten())]
+                    # a = [np.argmax(prob)]
+                    # a = [np.random.choice(s[-2].size, p=prob.flatten())]
+                    # pick all cuts with probability > 0.4
+                    a = np.where(prob > 0.4)[0]
             else:
                 # for testing case, only sample action
                 a = [np.random.choice(s[-2].size, p=prob.flatten())]
@@ -353,18 +355,22 @@ if __name__ == "__main__":
             A, b, c0, cuts_a, cuts_b, x_LP = new_state
 
             og_r = r
-            if option_rewards[a] < 0:
-                # penalize choosing a cut that makes the problem bigger
-                r = r + option_rewards[a] * 10
-            else:
-                r = r + option_rewards[a]
+            # if option_rewards[a] < 0:
+            #     # penalize choosing a cut that makes the problem bigger
+            #     r = r + option_rewards[a] * 10
+            # else:
+            #     r = r + option_rewards[a]
 
             obss_constraint.append(curr_constraints)
             obss_cuts.append(available_cuts)
             acts.append(a)
             rews.append(r)
             s = new_state
-            repisode += r
+            if r < 1e-2:
+                repisode += -10
+            else:
+                repisode += r
+            # *100 - d
             og_repisode += og_r
 
             # if repisode < 0:
@@ -372,8 +378,8 @@ if __name__ == "__main__":
             #     repisode = repisode - 1000
             #     d = True
 
-        with open('option_rewards_dict.json', 'w') as f:
-            json.dump(option_rewards_dict, f)
+        # with open('option_rewards_dict.json', 'w') as f:
+        #     json.dump(option_rewards_dict, f)
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
         returns = discounted_rewards(rews, gamma)
@@ -383,7 +389,7 @@ if __name__ == "__main__":
         print("sum reward: ", repisode)
         # append r to a file called reward_{i}.txt
         with open(f"reward.txt", "a") as f:
-            f.write(str(len(acts)) + "\t" + str(repisode) + "\t" + str(og_repisode) + "\n")
+            f.write(str(e) + "\t" + str(repisode) + "\t" + str(og_repisode) + "\n")
         # print(x_LP)
 
         # PG update and save best model so far
