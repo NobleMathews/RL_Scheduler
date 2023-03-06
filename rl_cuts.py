@@ -345,6 +345,8 @@ if __name__ == "__main__":
                     # a = [np.random.choice(s[-2].size, p=prob.flatten())]
                     # pick all cuts with probability > 0.4
                     a = np.where(prob > 0.4)[0]
+                    if not len(a):
+                        a = [np.argmax(prob)]
             else:
                 # for testing case, only sample action
                 a = [np.random.choice(s[-2].size, p=prob.flatten())]
