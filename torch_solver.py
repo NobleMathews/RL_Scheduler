@@ -218,6 +218,14 @@ def computeoptimaltab(A, b, RC, obj, basis_index, identity_index):
     m, n = A.shape
     assert m == b.size
     # assert n == RC.size
+    # count = 0
+    # B = A
+    # for i in range(n):
+    #     if i not in basis_index:
+    #         B[:, i] = np.eye(m)[:, identity_index[count]]
+    #         count += 1
+    # for i in range(count, len(identity_index)):
+    #     B = np.c_[B, np.eye(m)[:, identity_index[i]]]
     B = A[:, basis_index]
     if len(identity_index):
         B = np.concatenate((B, np.eye(m)[:, identity_index]), axis=1)
@@ -270,6 +278,18 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
     print(obj)
     tab = computeoptimaltab(A_tilde, b_tilde, rc, obj, basis_index, identity_index)
     tab = roundmarrays(tab)
+    # find columns in tab with only 1 non-zero entry
+    # also note the row index of the non-zero entry
+    # this is the row index of the variable in the original problem
+    # new_integrality = []
+    # for i in range(1, tab.shape[1]):
+    #     actual_index = i-1
+    #     if actual_index in basis_index:
+    #         new_integrality.append(integrality[actual_index])
+    #         continue
+    #     if np.sum(abs(tab[:, i])) == 1:
+    #         index = np.where(abs(tab[:, i]) == 1)[0][0]
+    #         integrality[index] = "C"
     x = tab[:, 0]
     # print(tab)
     # done = True
@@ -282,12 +302,15 @@ def compute_state(A, b, c, sense, integrality, maximize=True):
     # which row corresponds to which variable - verify while solving
     # row_status = np.asarray(integrality)[basis_index[:len(integrality)]]
     # print(np.unique(integrality, return_counts=True))
-    for i in range(x.size):
-        if i >= len(integrality):
-            break
+    integrality = np.asarray(integrality)[basis_index]
+    for f in range(integrality.size):
+        # if i >= len(integrality):
+        #     break
         # row i -> basis of which
         # Sol => Integrality check  and integrality[i] != "C"
-        if i != 0 and integrality[i - 1] != "C":
+        # and integrality[i - 1] != "C"
+        i = f+1
+        if integrality[f] != "C":
             if abs(round(x[i]) - x[i]) > 1e-2:
                 # print(abs(round(x[i]) - x[i]))
                 done += 1

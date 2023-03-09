@@ -163,6 +163,13 @@ def make_multiple_env(load_dir, idx_list, timelimit, reward_type):
         VType = input_data["VType"]
         maximize = input_data["maximize"]
 
+        # A0 = np.asarray([[3, 2], [0, 1]])
+        # b0 = np.asarray([5, 2])
+        # c0 = np.asarray([1, 1])
+        # sense = ["<", "<"]
+        # VType = ["Z", "C"]
+        # maximize = True
+
         env = TimelimitWrapper(
             GurobiOriginalEnv(A0, b0, c0, sense, VType, maximize, solution=None, reward_type=reward_type), timelimit)
         envs.append(env)
