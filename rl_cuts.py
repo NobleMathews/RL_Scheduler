@@ -163,6 +163,19 @@ def make_multiple_env(load_dir, idx_list, timelimit, reward_type):
         VType = input_data["VType"]
         maximize = input_data["maximize"]
 
+        # A0 = np.asarray([[1]*6 + [0]*18, [0]*6+[1]*6+[0]*12, [0]*12+[1]*6+[0]*6, [0]*18+[1]*6,
+        #                  [15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70, 0, 0, 0, 0, 0],
+        #                  [0, 15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70, 0, 0, 0, 0],
+        #                  [0, 0, 15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70, 0, 0, 0],
+        #                  [0, 0, 0, 15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70, 0, 0],
+        #                  [0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70, 0],
+        #                  [0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 70]])
+        # b0 = np.asarray([10, 5, 7, 4, 45, 120, 165, 214, 64, 93])
+        # c0 = np.asarray([23, 12, 34, 25, 27, 16, 29, 24, 43, 35, 28, 19, 43, 31, 52, 36, 30, 21, 54, 36, 54, 46, 34, 27])
+        # sense = ["<"]*4+[">"]*6
+        # VType = ["Z"]*24
+        # maximize = False
+
         # A0 = np.asarray([[3, 2], [0, 1]])
         # b0 = np.asarray([5, 2])
         # c0 = np.asarray([1, 1])
@@ -281,6 +294,7 @@ if __name__ == "__main__":
             available_cuts = np.concatenate((cuts_a, cuts_b[:, None]), axis=1)
 
             # compute probability distribution
+            # torch.onnx.export(actor.model, (torch.FloatTensor(curr_constraints), torch.FloatTensor(available_cuts)), "lstm_model.onnx")
             prob = actor.compute_prob(curr_constraints, available_cuts)
             # [cut_rows, :]
             prob = prob / np.sum(prob)
