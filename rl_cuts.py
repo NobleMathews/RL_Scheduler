@@ -194,7 +194,7 @@ try_config = {
     "load_dir": 'instances/kondili.json',
     # this is the location of the randomly generated instances (you may specify a different directory)
     "idx_list": list(range(1)),  # take the first n instances from the directory
-    "timelimit": 10,  # the maximum horizon length
+    "timelimit": 30,  # the maximum horizon length
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
@@ -253,15 +253,15 @@ if __name__ == "__main__":
     explore_decay_rate = 0.01
     best_rew = 0
 
-    if training:
-        actor = Policy(input_size=input_dim, hidden_size=lstm_hidden, hidden_size2=dense_hidden, lr=lr)
-    else:
-        actor = torch.load(PATH)
+    # if training:
+    #     actor = Policy(input_size=input_dim, hidden_size=lstm_hidden, hidden_size2=dense_hidden, lr=lr)
+    # else:
+    #     actor = torch.load(PATH)
 
     sigma = 0.2
     gamma = 0.99  # discount
     rrecord = []
-    for e in range(10000):
+    for e in range(1000):
         print(f"Starting Episode {e}")
         # gym loop
         # To keep a record of states actions and reward for each episode
@@ -272,6 +272,7 @@ if __name__ == "__main__":
 
         s, cut_rows = env.reset()  # samples a random instance every time env.reset() is called
         d = 1
+        remaining_vars = d
         repisode = 0
         og_repisode = 0
         i = 0
@@ -293,14 +294,15 @@ if __name__ == "__main__":
             curr_constraints = np.concatenate((A, b[:, None]), axis=1)
             available_cuts = np.concatenate((cuts_a, cuts_b[:, None]), axis=1)
 
-            # compute probability distribution
-            # torch.onnx.export(actor.model, (torch.FloatTensor(curr_constraints), torch.FloatTensor(available_cuts)), "lstm_model.onnx")
-            prob = actor.compute_prob(curr_constraints, available_cuts)
-            # [cut_rows, :]
-            prob = prob / np.sum(prob)
+            # # compute probability distribution
+            # # torch.onnx.export(actor.model, (torch.FloatTensor(curr_constraints), torch.FloatTensor(available_cuts)), "lstm_model.onnx")
+            # prob = actor.compute_prob(curr_constraints, available_cuts)
+            # # [cut_rows, :]
+            # prob = prob / np.sum(prob)
+            #
+            # explore_rate = min_explore_rate + \
+            #                (max_explore_rate - min_explore_rate) * np.exp(-explore_decay_rate * (e))
 
-            explore_rate = min_explore_rate + \
-                           (max_explore_rate - min_explore_rate) * np.exp(-explore_decay_rate * (e))
             # option_rewards = []
             # # if training or explore:
             # #     for i in range(s[-2].size):
@@ -317,34 +319,38 @@ if __name__ == "__main__":
             # if str(curr_constraints.tobytes()) in option_rewards_dict:
             #     option_rewards = option_rewards_dict[str(curr_constraints.tobytes())]
             # else:
-            #     # if training or explore:
-            #     # parallelize this loop with as many workers as cpu cores
-            #     # for i in range(s[-2].size):
-            #     #     new_state, r, d, _ = env.step([i], True)
-            #     #     option_rewards.append(r)
-            #
-            #     # Initialize the ray runtime
-            #     ray.init()
-            #
-            #     # Get the number of CPU cores available on the machine
-            #     num_cpus = psutil.cpu_count(logical=False)
-            #
-            #     # Create a list of tasks to run in parallel
-            #     tasks = [get_option_reward.remote(i, env) for i in range(s[-2].size)]
-            #
-            #     # Use ray to fetch the results of the tasks in parallel
-            #     option_rewards = ray.get(tasks)
-            #
-            #     # Shut down the ray runtime
-            #     ray.shutdown()
-            #
-            #     option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
-            #
-            # # normalize option rewards
-            # option_rewards = np.array(option_rewards)
-            # option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
-            # # option_penalty = 100 * option_rewards
-            #
+                # if training or explore:
+                # parallelize this loop with as many workers as cpu cores
+                # for i in range(s[-2].size):
+                #     new_state, r, d, _ = env.step([i], True)
+                #     option_rewards.append(r)
+
+            # Initialize the ray runtime
+            ray.init()
+
+            # Get the number of CPU cores available on the machine
+            num_cpus = psutil.cpu_count(logical=False)
+
+            # Create a list of tasks to run in parallel
+            if 15 >= s[-2].size:
+                a = range(s[-2].size)
+            else:
+                a = np.random.choice(s[-2].size, 15, replace=False)
+            tasks = [get_option_reward.remote(i, env) for i in a]
+
+            # Use ray to fetch the results of the tasks in parallel
+            option_rewards = ray.get(tasks)
+
+            # Shut down the ray runtime
+            ray.shutdown()
+
+                # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
+
+            # normalize option rewards
+            option_rewards = np.array(option_rewards)
+            option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+            # option_penalty = 100 * option_rewards
+
             # # get index of the top 5% of options with most positive rewards
             # top_10_percent = int(0.05 * len(option_rewards))
             # if top_10_percent == 0:
@@ -352,26 +358,30 @@ if __name__ == "__main__":
             # top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
 
 
-            # epsilon greedy for exploration
-            if training and explore:
-                random_num = random.uniform(0, 1)
-                if random_num <= explore_rate:
-                    print("manually directed picking")
-                    a = np.random.randint(0, s[-2].size, 1)
-                    # randomly choose between the top 10% of options
-                    # a = np.random.choice(top_10_percent_indices, 1)
-                else:
-                    print("agent probability based picking")
-                    # a = [np.argmax(prob)]
-                    # a = [np.random.choice(s[-2].size, p=prob.flatten())]
-                    # pick all cuts with probability > 0.4
-                    a = np.where(prob > 0.4)[0]
-                    if not len(a):
-                        a = [np.argmax(prob)]
-            else:
-                # for testing case, only sample action
-                a = [np.random.choice(s[-2].size, p=prob.flatten())]
+            # # epsilon greedy for exploration
+            # if training and explore:
+            #     random_num = random.uniform(0, 1)
+            #     if random_num <= explore_rate:
+            #         print("manually directed picking")
+            #         a = np.random.randint(0, s[-2].size, 1)
+            #         # randomly choose between the top 10% of options
+            #         # a = np.random.choice(top_10_percent_indices, 1)
+            #     else:
+            #         print("agent probability based picking")
+            #         # a = [np.argmax(prob)]
+            #         # a = [np.random.choice(s[-2].size, p=prob.flatten())]
+            #         # pick all cuts with probability > 0.4
+            #         a = np.where(prob > 0.4)[0]
+            #         if not len(a):
+            #             a = [np.argmax(prob)]
+            # else:
+            #     # for testing case, only sample action
+            #     a = [np.random.choice(s[-2].size, p=prob.flatten())]
+            # get index of largest element in option_rewards
+            a = [a[np.argmax(option_rewards)]]
             new_state, r, d, _ = env.step(list(a))
+            if d != 0:
+                remaining_vars = d
             # print('episode', e, 'step', t, 'reward', r, 'action space size', new_state[-1].size, 'action', a)
             # a = np.random.randint(0, s[-2].size,
             #                       1)  # s[-1].size shows the number of actions, i.e., cuts available at state s
@@ -405,21 +415,26 @@ if __name__ == "__main__":
         #     json.dump(option_rewards_dict, f)
         # record rewards and print out to track performance
         rrecord.append(np.sum(rews))
-        returns = discounted_rewards(rews, gamma)
-        # we only use one trajectory so only one-variate gaussian used here.
-        Js = returns + np.random.normal(0, 1, len(returns)) / sigma
+        # returns = discounted_rewards(rews, gamma)
+        # # we only use one trajectory so only one-variate gaussian used here.
+        # Js = returns + np.random.normal(0, 1, len(returns)) / sigma
         print("episode: ", e)
         print("sum reward: ", repisode)
+        # save numpy array to file
+        save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
+        if not os.path.isdir(f"session"):
+            os.makedirs(f"session")
+        np.save(f"session/ab_{e}.npy", save_episode_np)
         # append r to a file called reward_{i}.txt
-        with open(f"reward.txt", "a") as f:
-            f.write(str(e) + "\t" + str(repisode) + "\t" + str(og_repisode) + "\n")
+        with open(f"session/reward.txt", "a") as f:
+            f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
         # print(x_LP)
 
-        # PG update and save best model so far
-        if training:
-            if repisode >= best_rew:
-                best_rew = repisode
-                torch.save(actor, PATH)
-
-            loss = actor.train(obss_constraint, obss_cuts, acts, Js)
-            print("Loss: ", loss)
+        # # PG update and save best model so far
+        # if training:
+        #     if repisode >= best_rew:
+        #         best_rew = repisode
+        #         torch.save(actor, PATH)
+        #
+        #     loss = actor.train(obss_constraint, obss_cuts, acts, Js)
+        #     print("Loss: ", loss)
