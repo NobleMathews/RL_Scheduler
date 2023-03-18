@@ -49,12 +49,13 @@ class GurobiOriginalEnv(object):
         return done
 
     def _reset(self):
-        self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.oldobj, self.x, self.tab, self.cut_rows = compute_state(self.A0,
-                                                                                                           self.b0,
-                                                                                                           self.c0,
-                                                                                                           self.sense0,
-                                                                                                           self.VType0,
-                                                                                                           self.maximize)
+        self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.oldobj, self.x, self.tab, self.cut_rows = compute_state(
+            self.A0,
+            self.b0,
+            self.c0,
+            self.sense0,
+            self.VType0,
+            self.maximize)
         return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), self.done, self.cut_rows
 
     def reset(self):
@@ -66,15 +67,16 @@ class GurobiOriginalEnv(object):
         if fake:
             _, _, _, _, _, newobj, _, _, _ = compute_state(
                 np.vstack((self.A, cut_a)), np.append(self.b, cut_b), self.c,
-                self.sense+["<"], self.VType, self.maximize)
+                self.sense + ["<"], self.VType, self.maximize)
             reward = np.abs(self.oldobj - newobj)
             return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), reward, self.done, {}
         self.A = np.vstack((self.A, cut_a))
         self.b = np.append(self.b, cut_b)
         self.sense.append("<")
         try:
-            self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.newobj, self.x, self.tab, self.cut_rows = compute_state(self.A,self.b, self.c,
-                                                                                                            self.sense, self.VType, self.maximize)
+            self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.newobj, self.x, self.tab, self.cut_rows = compute_state(
+                self.A, self.b, self.c,
+                self.sense, self.VType, self.maximize)
             if self.reward_type == 'simple':
                 reward = -1.0
             elif self.reward_type == 'obj':
@@ -198,7 +200,7 @@ try_config = {
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
-@ray.remote
+
 def get_option_reward(i, env):
     new_state, r, d, _ = env.step([i], True)
     return r
@@ -319,14 +321,14 @@ if __name__ == "__main__":
             # if str(curr_constraints.tobytes()) in option_rewards_dict:
             #     option_rewards = option_rewards_dict[str(curr_constraints.tobytes())]
             # else:
-                # if training or explore:
-                # parallelize this loop with as many workers as cpu cores
-                # for i in range(s[-2].size):
-                #     new_state, r, d, _ = env.step([i], True)
-                #     option_rewards.append(r)
+            # if training or explore:
+            # parallelize this loop with as many workers as cpu cores
+            # for i in range(s[-2].size):
+            #     new_state, r, d, _ = env.step([i], True)
+            #     option_rewards.append(r)
 
             # Initialize the ray runtime
-            ray.init()
+            # ray.init()
 
             # Get the number of CPU cores available on the machine
             num_cpus = psutil.cpu_count(logical=False)
@@ -336,18 +338,19 @@ if __name__ == "__main__":
                 a = range(s[-2].size)
             else:
                 a = np.random.choice(s[-2].size, 15, replace=False)
-            tasks = [get_option_reward.remote(i, env) for i in a]
+            #     .remote
+            tasks = [get_option_reward(i, env) for i in a]
 
             # Use ray to fetch the results of the tasks in parallel
-            option_rewards = ray.get(tasks)
+            # option_rewards = ray.get(tasks)
 
             # Shut down the ray runtime
-            ray.shutdown()
+            # ray.shutdown()
 
-                # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
+            # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
 
             # normalize option rewards
-            option_rewards = np.array(option_rewards)
+            option_rewards = np.array(tasks)
             option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
             # option_penalty = 100 * option_rewards
 
@@ -356,7 +359,6 @@ if __name__ == "__main__":
             # if top_10_percent == 0:
             #     top_10_percent = 1
             # top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
-
 
             # # epsilon greedy for exploration
             # if training and explore:
