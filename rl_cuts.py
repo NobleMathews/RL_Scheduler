@@ -65,11 +65,11 @@ class GurobiOriginalEnv(object):
     def step(self, action, fake=False):
         cut_a, cut_b = self.cuts_a[action, :], self.cuts_b[action]
         if fake:
-            _, _, _, _, _, newobj, _, _, _ = compute_state(
+            _, _, _, _, done, newobj, _, _, _ = compute_state(
                 np.vstack((self.A, cut_a)), np.append(self.b, cut_b), self.c,
                 self.sense + ["<"], self.VType, self.maximize)
             reward = np.abs(self.oldobj - newobj)
-            return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), reward, self.done, {}
+            return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), reward, done, {}
         self.A = np.vstack((self.A, cut_a))
         self.b = np.append(self.b, cut_b)
         self.sense.append("<")
@@ -203,7 +203,7 @@ try_config = {
 
 def get_option_reward(i, env):
     new_state, r, d, _ = env.step([i], True)
-    return r
+    return r, d
 
 
 def normalization(A, b, E, d):
@@ -332,14 +332,14 @@ if __name__ == "__main__":
 
             # Get the number of CPU cores available on the machine
             num_cpus = psutil.cpu_count(logical=False)
-
+            n_cuts = 10
             # Create a list of tasks to run in parallel
-            if 15 >= s[-2].size:
+            if n_cuts >= s[-2].size:
                 a = range(s[-2].size)
             else:
-                a = np.random.choice(s[-2].size, 15, replace=False)
+                a = np.random.choice(s[-2].size, n_cuts, replace=False)
             #     .remote
-            tasks = [get_option_reward(i, env) for i in a]
+            opt_rewards = [get_option_reward(i, env) for i in a]
 
             # Use ray to fetch the results of the tasks in parallel
             # option_rewards = ray.get(tasks)
@@ -350,8 +350,14 @@ if __name__ == "__main__":
             # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
 
             # normalize option rewards
-            option_rewards = np.array(tasks)
-            option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+
+
+
+            # option_rewards = np.array(tasks)
+            # option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+
+
+
             # option_penalty = 100 * option_rewards
 
             # # get index of the top 5% of options with most positive rewards
@@ -380,10 +386,50 @@ if __name__ == "__main__":
             #     # for testing case, only sample action
             #     a = [np.random.choice(s[-2].size, p=prob.flatten())]
             # get index of largest element in option_rewards
-            a = [a[np.argmax(option_rewards)]]
+            rewards, costs = zip(*opt_rewards)
+            rewards = np.array(rewards)
+            costs = np.array(costs)
+
+            # min_cost = np.inf
+            # max_reward = -np.inf
+            # index = None
+            #
+            # for i, (reward, cost) in enumerate(zip(rewards, costs)):
+            #     if cost < min_cost and reward > max_reward:
+            #         min_cost = cost
+            #         max_reward = reward
+            #         index = i
+
+            # Normalize the rewards and costs
+            # Normalize the rewards and costs between 0 and 1
+            rewards_min = np.min(rewards)
+            rewards_range = np.max(rewards) - rewards_min
+            if rewards_range == 0:
+                normalized_rewards = np.zeros_like(rewards)
+            else:
+                normalized_rewards = (rewards - rewards_min) / rewards_range
+
+            costs_min = np.min(costs)
+            costs_range = np.max(costs) - costs_min
+            if costs_range == 0:
+                normalized_costs = np.zeros_like(costs)
+            else:
+                normalized_costs = (costs - costs_min) / costs_range
+
+            # Calculate the reward-to-cost ratio
+            ratios = normalized_rewards / normalized_costs
+
+            # Get the index of the highest reward-to-cost ratio
+            index = np.nanargmax(ratios)
+
+            a = [a[index]]
+
+            # find the maximum option_reward
+
             new_state, r, d, _ = env.step(list(a))
             if d != 0:
                 remaining_vars = d
+            print("Action taken: ", index, "Reward: ", r, "Remaining vars: ", d)
             # print('episode', e, 'step', t, 'reward', r, 'action space size', new_state[-1].size, 'action', a)
             # a = np.random.randint(0, s[-2].size,
             #                       1)  # s[-1].size shows the number of actions, i.e., cuts available at state s
@@ -424,11 +470,11 @@ if __name__ == "__main__":
         print("sum reward: ", repisode)
         # save numpy array to file
         save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
-        if not os.path.isdir(f"session2"):
-            os.makedirs(f"session2")
-        np.save(f"session2/ab_{e}.npy", save_episode_np)
+        if not os.path.isdir(f"session3"):
+            os.makedirs(f"session3")
+        np.save(f"session3/ab_{e}.npy", save_episode_np)
         # append r to a file called reward_{i}.txt
-        with open(f"session2/reward.txt", "a") as f:
+        with open(f"session3/reward.txt", "a") as f:
             f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
         # print(x_LP)
 
