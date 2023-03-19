@@ -196,7 +196,7 @@ try_config = {
     "load_dir": 'instances/kondili.json',
     # this is the location of the randomly generated instances (you may specify a different directory)
     "idx_list": list(range(1)),  # take the first n instances from the directory
-    "timelimit": 30,  # the maximum horizon length
+    "timelimit": 100,  # the maximum horizon length
     "reward_type": 'obj'  # DO NOT CHANGE reward_type
 }
 
@@ -424,11 +424,11 @@ if __name__ == "__main__":
         print("sum reward: ", repisode)
         # save numpy array to file
         save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
-        if not os.path.isdir(f"session"):
-            os.makedirs(f"session")
-        np.save(f"session/ab_{e}.npy", save_episode_np)
+        if not os.path.isdir(f"session2"):
+            os.makedirs(f"session2")
+        np.save(f"session2/ab_{e}.npy", save_episode_np)
         # append r to a file called reward_{i}.txt
-        with open(f"session/reward.txt", "a") as f:
+        with open(f"session2/reward.txt", "a") as f:
             f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
         # print(x_LP)
 
