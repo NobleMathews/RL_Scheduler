@@ -233,6 +233,7 @@ def discounted_rewards(r, gamma):
 
 
 if __name__ == "__main__":
+    session_type = 0
 
     training = True
     explore = True
@@ -332,97 +333,111 @@ if __name__ == "__main__":
 
             # Get the number of CPU cores available on the machine
             num_cpus = psutil.cpu_count(logical=False)
-            n_cuts = 10
+            n_cuts = 1
             # Create a list of tasks to run in parallel
             if n_cuts >= s[-2].size:
                 a = range(s[-2].size)
             else:
-                a = np.random.choice(s[-2].size, n_cuts, replace=False)
-            #     .remote
-            opt_rewards = [get_option_reward(i, env) for i in a]
+                # Lexicographic
+                if session_type == 0:
+                    a = 0
+                # Max violation
+                elif session_type == 1:
+                    a = np.argmax(np.abs(s[-2]-np.round(s[-2])))
+                # Max normalized violation
+                elif session_type == 2:
+                    row_norms = np.apply_along_axis(np.linalg.norm, 1, s[-3])
+                    a = np.argmax(np.abs(s[-2] - np.round(s[-2]))/row_norms)
+                # Random cut selection
+                else:
+                    a = np.random.choice(s[-2].size, n_cuts, replace=False)
 
-            # Use ray to fetch the results of the tasks in parallel
-            # option_rewards = ray.get(tasks)
-
-            # Shut down the ray runtime
-            # ray.shutdown()
-
-            # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
-
-            # normalize option rewards
-
-
-
-            # option_rewards = np.array(tasks)
-            # option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
-
-
-
-            # option_penalty = 100 * option_rewards
-
-            # # get index of the top 5% of options with most positive rewards
-            # top_10_percent = int(0.05 * len(option_rewards))
-            # if top_10_percent == 0:
-            #     top_10_percent = 1
-            # top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
-
-            # # epsilon greedy for exploration
-            # if training and explore:
-            #     random_num = random.uniform(0, 1)
-            #     if random_num <= explore_rate:
-            #         print("manually directed picking")
-            #         a = np.random.randint(0, s[-2].size, 1)
-            #         # randomly choose between the top 10% of options
-            #         # a = np.random.choice(top_10_percent_indices, 1)
-            #     else:
-            #         print("agent probability based picking")
-            #         # a = [np.argmax(prob)]
-            #         # a = [np.random.choice(s[-2].size, p=prob.flatten())]
-            #         # pick all cuts with probability > 0.4
-            #         a = np.where(prob > 0.4)[0]
-            #         if not len(a):
-            #             a = [np.argmax(prob)]
-            # else:
-            #     # for testing case, only sample action
-            #     a = [np.random.choice(s[-2].size, p=prob.flatten())]
-            # get index of largest element in option_rewards
-            rewards, costs = zip(*opt_rewards)
-            rewards = np.array(rewards)
-            costs = np.array(costs)
-
-            # min_cost = np.inf
-            # max_reward = -np.inf
-            # index = None
+            index = 0
+            # #     .remote
+            # opt_rewards = [get_option_reward(i, env) for i in a]
             #
-            # for i, (reward, cost) in enumerate(zip(rewards, costs)):
-            #     if cost < min_cost and reward > max_reward:
-            #         min_cost = cost
-            #         max_reward = reward
-            #         index = i
-
-            # Normalize the rewards and costs
-            # Normalize the rewards and costs between 0 and 1
-            rewards_min = np.min(rewards)
-            rewards_range = np.max(rewards) - rewards_min
-            if rewards_range == 0:
-                normalized_rewards = np.zeros_like(rewards)
-            else:
-                normalized_rewards = (rewards - rewards_min) / rewards_range
-
-            costs_min = np.min(costs)
-            costs_range = np.max(costs) - costs_min
-            if costs_range == 0:
-                normalized_costs = np.zeros_like(costs)
-            else:
-                normalized_costs = (costs - costs_min) / costs_range
-
-            # Calculate the reward-to-cost ratio
-            ratios = normalized_rewards / normalized_costs
-
-            # Get the index of the highest reward-to-cost ratio
-            index = np.nanargmax(ratios)
-
-            a = [a[index]]
+            # # Use ray to fetch the results of the tasks in parallel
+            # # option_rewards = ray.get(tasks)
+            #
+            # # Shut down the ray runtime
+            # # ray.shutdown()
+            #
+            # # option_rewards_dict[str(curr_constraints.tobytes())] = option_rewards
+            #
+            # # normalize option rewards
+            #
+            #
+            #
+            # # option_rewards = np.array(tasks)
+            # # option_rewards = (option_rewards - np.mean(option_rewards)) / np.std(option_rewards)
+            #
+            #
+            #
+            # # option_penalty = 100 * option_rewards
+            #
+            # # # get index of the top 5% of options with most positive rewards
+            # # top_10_percent = int(0.05 * len(option_rewards))
+            # # if top_10_percent == 0:
+            # #     top_10_percent = 1
+            # # top_10_percent_indices = np.argpartition(option_rewards, -top_10_percent)[-top_10_percent:]
+            #
+            # # # epsilon greedy for exploration
+            # # if training and explore:
+            # #     random_num = random.uniform(0, 1)
+            # #     if random_num <= explore_rate:
+            # #         print("manually directed picking")
+            # #         a = np.random.randint(0, s[-2].size, 1)
+            # #         # randomly choose between the top 10% of options
+            # #         # a = np.random.choice(top_10_percent_indices, 1)
+            # #     else:
+            # #         print("agent probability based picking")
+            # #         # a = [np.argmax(prob)]
+            # #         # a = [np.random.choice(s[-2].size, p=prob.flatten())]
+            # #         # pick all cuts with probability > 0.4
+            # #         a = np.where(prob > 0.4)[0]
+            # #         if not len(a):
+            # #             a = [np.argmax(prob)]
+            # # else:
+            # #     # for testing case, only sample action
+            # #     a = [np.random.choice(s[-2].size, p=prob.flatten())]
+            # # get index of largest element in option_rewards
+            # rewards, costs = zip(*opt_rewards)
+            # rewards = np.array(rewards)
+            # costs = np.array(costs)
+            #
+            # # min_cost = np.inf
+            # # max_reward = -np.inf
+            # # index = None
+            # #
+            # # for i, (reward, cost) in enumerate(zip(rewards, costs)):
+            # #     if cost < min_cost and reward > max_reward:
+            # #         min_cost = cost
+            # #         max_reward = reward
+            # #         index = i
+            #
+            # # Normalize the rewards and costs
+            # # Normalize the rewards and costs between 0 and 1
+            # rewards_min = np.min(rewards)
+            # rewards_range = np.max(rewards) - rewards_min
+            # if rewards_range == 0:
+            #     normalized_rewards = np.zeros_like(rewards)
+            # else:
+            #     normalized_rewards = (rewards - rewards_min) / rewards_range
+            #
+            # costs_min = np.min(costs)
+            # costs_range = np.max(costs) - costs_min
+            # if costs_range == 0:
+            #     normalized_costs = np.zeros_like(costs)
+            # else:
+            #     normalized_costs = (costs - costs_min) / costs_range
+            #
+            # # Calculate the reward-to-cost ratio
+            # ratios = normalized_rewards / normalized_costs
+            #
+            # # Get the index of the highest reward-to-cost ratio
+            # index = np.nanargmax(ratios)
+            #
+            # a = [a[index]]
 
             # find the maximum option_reward
 
@@ -470,11 +485,11 @@ if __name__ == "__main__":
         print("sum reward: ", repisode)
         # save numpy array to file
         save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
-        if not os.path.isdir(f"session3"):
-            os.makedirs(f"session3")
-        np.save(f"session3/ab_{e}.npy", save_episode_np)
+        if not os.path.isdir(f"new_session{session_type}"):
+            os.makedirs(f"new_session{session_type}")
+        np.save(f"new_session{session_type}/ab_{e}.npy", save_episode_np)
         # append r to a file called reward_{i}.txt
-        with open(f"session3/reward.txt", "a") as f:
+        with open(f"new_session{session_type}/reward.txt", "a") as f:
             f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
         # print(x_LP)
 
