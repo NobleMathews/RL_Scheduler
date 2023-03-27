@@ -351,6 +351,7 @@ if __name__ == "__main__":
                 # Random cut selection
                 else:
                     a = np.random.choice(s[-2].size, n_cuts, replace=False)
+                a = [a]
 
             index = 0
             # #     .remote
@@ -469,6 +470,16 @@ if __name__ == "__main__":
             # *100 - d
             og_repisode += og_r
 
+            if i % 10 == 0:
+                # save numpy array to file
+                save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
+                if not os.path.isdir(f"new_session{session_type}_{i}"):
+                    os.makedirs(f"new_session{session_type}_{i}")
+                np.save(f"new_session{session_type}_{i}/ab_{e}.npy", save_episode_np)
+                # append r to a file called reward_{i}.txt
+                with open(f"new_session{session_type}_{i}/reward.txt", "a") as f:
+                    f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
+
             # if repisode < 0:
             #     # penalize not solving the problem
             #     repisode = repisode - 1000
@@ -483,14 +494,6 @@ if __name__ == "__main__":
         # Js = returns + np.random.normal(0, 1, len(returns)) / sigma
         print("episode: ", e)
         print("sum reward: ", repisode)
-        # save numpy array to file
-        save_episode_np = np.concatenate((A, b[:, None]), axis=1)[411:]
-        if not os.path.isdir(f"new_session{session_type}"):
-            os.makedirs(f"new_session{session_type}")
-        np.save(f"new_session{session_type}/ab_{e}.npy", save_episode_np)
-        # append r to a file called reward_{i}.txt
-        with open(f"new_session{session_type}/reward.txt", "a") as f:
-            f.write(str(e) + "\t" + str(og_repisode) + "\t" + str(remaining_vars) + "\n")
         # print(x_LP)
 
         # # PG update and save best model so far
