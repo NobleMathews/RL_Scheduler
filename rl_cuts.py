@@ -351,8 +351,12 @@ if __name__ == "__main__":
                 # Random cut selection
                 else:
                     a = np.random.choice(s[-2].size, n_cuts, replace=False)
-                a = [a]
-
+                try:
+                    iter(a)
+                except TypeError:
+                    a = [a]
+                else:
+                    pass
             index = 0
             # #     .remote
             # opt_rewards = [get_option_reward(i, env) for i in a]
