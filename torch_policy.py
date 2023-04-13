@@ -1,4 +1,5 @@
 import json
+import sys
 
 import torch
 import torch.nn as nn
@@ -209,7 +210,7 @@ if __name__ == "__main__":
     # min {cx | Ax <= b, x >= 0, x integer}
     # (411, 323)
 
-    gen_problem_files = False
+    gen_problem_files = True
     instance = "instances/kondili.json"
 
     if gen_problem_files:
@@ -247,13 +248,22 @@ if __name__ == "__main__":
         # VType = ["Z", "C"]
         # maximize = True
 
+        model.optimize()
+        # obtain results
+        solution = []
+        # basis_index = []
+        # RC = []
+        X = model.getVars()
+        for i in X:
+            solution.append(i.X)
+
         data_format = {
-            "A0": A0, "b0": b0, "c0": c0, "sense": sense, "VType": VType, "maximize": maximize
+            "A0": A0, "b0": b0, "c0": c0, "sense": sense, "VType": VType, "maximize": maximize, "solution": solution,
         }
 
         with open(instance, "w") as outputfile:
             json.dump(data_format, outputfile, cls=NumpyEncoder)
-
+        sys.exit()
     with open(instance, "r") as inputfile:
         input_data = json.load(inputfile)
 

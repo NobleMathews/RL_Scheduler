@@ -36,6 +36,8 @@ class GurobiOriginalEnv(object):
         self.maximize = maximize
         self.reward_type = reward_type
         assert reward_type in ['simple', 'obj']
+        # assert A.shape[1] == solution.size
+        # self.IPsolution = solution  # convention
 
     # upon init, check if the ip problem can be solved by lp
     # try:
@@ -121,6 +123,7 @@ class TimelimitWrapper(object):
         obs, reward, done, info = self.env.step(action, fake)
         if self.counter >= self.timelimit:
             done = 0
+            print('forced return due to timelimit')
         return obs, reward, done, info
 
 
