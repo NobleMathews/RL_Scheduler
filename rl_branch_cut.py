@@ -1,14 +1,13 @@
 import numpy as np
 import json
-import time
 
 from defaultlist import defaultlist
 from gurobipy import *
-from queue import PriorityQueue, Queue, LifoQueue
-from torch_solver import compute_state, roundmarrays, gurobi_solve
+from queue import Queue, LifoQueue
+from torch_solver import compute_state
 
 
-def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
+def gurobi_int_solve(A, b, c, sense, maximize=True):
     if maximize:
         c = -c  # Gurobi default is maximization
     varrange = range(c.size)
@@ -16,8 +15,7 @@ def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
     m = Model("LP")
     m.params.OutputFlag = 0  # suppress output
     X = m.addVars(
-        varrange, lb=0.0, ub=GRB.INFINITY, vtype=[GRB.CONTINUOUS if vt == "C" else GRB.BINARY for vt in vtype], obj=c,
-        name="X"
+        varrange, lb=0.0, ub=GRB.INFINITY, vtype=GRB.CONTINUOUS, obj=c, name="X"
     )
     _C = m.addConstrs(
         (
@@ -30,6 +28,21 @@ def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
             sum(A[i, j] * X[j] for j in varrange) == b[i]
             for i in crange
         ), "C")
+    # X = m.addVars(
+    #     varrange, lb=0.0, ub=GRB.INFINITY, vtype=[GRB.CONTINUOUS if vt == "C" else GRB.BINARY for vt in vtype], obj=c,
+    #     name="X"
+    # )
+    # _C = m.addConstrs(
+    #     (
+    #         sum(A[i, j] * X[j] for j in varrange) >= b[i]
+    #         if sense[i] == ">"
+    #         else
+    #         sum(A[i, j] * X[j] for j in varrange) <= b[i]
+    #         if sense[i] == "<"
+    #         else
+    #         sum(A[i, j] * X[j] for j in varrange) == b[i]
+    #         for i in crange
+    #     ), "C")
     # _C_e = m.addConstrs(
     #     (sum(A[i, j] * X[j] for j in varrange) == b[i] for i in crange if not sense or sense and sense[i] == "="), "C"
     # )
@@ -48,20 +61,20 @@ def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
     #      (sum(A[i, j] * X[j] for j in varrange) >= b[i] for i in crange if sense and sense[i] == ">")]
     # )
     # _C = m.addConstrs(chained, "C")
-    m.params.Method = -1  # primal simplex Method = 0
+    m.params.Method = 0  # primal simplex Method
     # print('start optimizing...')
     m.optimize()
     # obtain results
     solution = []
-    # basis_index = []
+    basis_index = []
     # RC = []
     feasible = True
     try:
         for i in X:
             solution.append(X[i].X)
             # RC.append(X[i].getAttr("RC"))
-            # if X[i].getAttr("VBasis") == 0:
-            #     basis_index.append(i)
+            if X[i].getAttr("VBasis") == 0:
+                basis_index.append(i)
         objval = m.ObjVal
         # for i in _C:
         #     if _C[i].getAttr("CBasis") == 0:
@@ -85,7 +98,7 @@ def gurobi_int_solve(A, b, c, sense, vtype, maximize=True):
     except:
         feasible = False
         objval = None
-    return feasible, objval, solution
+    return feasible, objval, solution, basis_index
 
 
 class Node(object):
@@ -154,12 +167,27 @@ class NodeLIFOQueue(object):
         return self.nodes.qsize()
 
 
-def checkintegral(x):
-    x = np.array(x)
-    if np.sum(abs(np.round(x) - x) > 1e-2) >= 1:
-        return False
-    else:
-        return True
+def checkintegral(x, basis_index, integrality):
+    integrality = np.asarray(integrality)[basis_index]
+    for f in range(integrality.size):
+        i = f + 1
+        if integrality[f] != "C":
+            if abs(round(x[i]) - x[i]) > 1e-2:
+                return False
+    return True
+
+
+def maxfrac(x, basis_index, integrality):
+    integrality = np.asarray(integrality)[basis_index]
+    max_frac = 1e-2
+    max_ind = 0
+    for f in range(integrality.size):
+        i = f + 1
+        if integrality[f] != "C":
+            if abs(round(x[i]) - x[i]) > max_frac:
+                max_frac = abs(round(x[i]) - x[i])
+                max_ind = i
+    return max_ind
 
 
 class CutAdder(object):
@@ -185,6 +213,7 @@ class timelimit_wrapper(object):
             return self.env.step(action, fake)
         self.counter += 1
         obs, reward, done, info = self.env.step(action, fake)
+        info["done"] = done
         if self.counter >= self.timelimit:
             done = 0
             print('forced return due to timelimit')
@@ -237,9 +266,9 @@ class GurobiOriginalCutBBEnv(object):
     # except NotImplementedError:
     #	print('the env needs to be initialized with nontrivial ip')
 
-    def check_init(self):
-        _, done, _ = self._reset()
-        return done
+    # def check_init(self):
+    #     _, done, _ = self._reset()
+    #     return done
 
     def _reset(self):
         self.A, self.b, self.cuts_a, self.cuts_b, self.done, self.oldobj, self.x, self.tab, self.cut_rows = compute_state(
@@ -274,13 +303,13 @@ class GurobiOriginalCutBBEnv(object):
                 reward = -1.0
             elif self.reward_type == 'obj':
                 reward = np.abs(self.oldobj - self.newobj)
+            self.oldobj = self.newobj
         except Exception as e:
             print(e)
             print('error in lp iteration')
             self.done = 0
             reward = 0.0
-        self.oldobj = self.newobj
-        self.A, self.b, self.cuts_a, self.cuts_b = map(roundmarrays, [self.A, self.b, self.cuts_a, self.cuts_b])
+        # self.A, self.b, self.cuts_a, self.cuts_b = map(roundmarrays, [self.A, self.b, self.cuts_a, self.cuts_b])
         return (self.A, self.b, self.c0, self.cuts_a, self.cuts_b, self.x), reward, self.done, {}
 
 
@@ -300,17 +329,19 @@ class BaselineCutAdder(CutAdder):
     def add_cuts(self, A, b, c, sense, VType, maximize, solution):
         env = timelimit_wrapper(GurobiOriginalCutBBEnv(A, b, c, sense, VType, maximize, solution),
                                 timelimit=self.max_num_cuts)
-        A, b, feasible = elementaryrollout(env, self.policy, rollout_length=self.max_num_cuts, gamma=1.0,
+        A, b, feasible, done = elementaryrollout(env, self.policy, rollout_length=self.max_num_cuts, gamma=1.0,
                                            mode=self.mode, backtrack=self.backtrack, window=self.window,
                                            threshold=self.threshold)
-        return A, b, feasible
+        return A, b, feasible, done, env
 
 
 def elementaryrollout(env, policy, rollout_length, gamma, mode, backtrack, window=None, threshold=None):
     # take in an environment
     # run cutting plane adding until termination
     # return both the LP bound and two newly branched LPs
-
+    info = {
+        "done": 1
+    }
     if backtrack:
         assert window is not None and threshold is not None
 
@@ -327,13 +358,13 @@ def elementaryrollout(env, policy, rollout_length, gamma, mode, backtrack, windo
         ob, _ = env.reset()
         factor = 1.0
         # ob = env.reset()
-        done = False
+        done = 1
         t = 0
         rsum = 0
         cutoff = []
         obj = []
         backtrack_stats = []
-        while not done and t <= rollout_length:
+        while not done == 0 and t <= rollout_length:
             # try:
             if True:
                 if mode == 'rl':
@@ -371,12 +402,12 @@ def elementaryrollout(env, policy, rollout_length, gamma, mode, backtrack, windo
                         action = []
                 else:
                     raise NotImplementedError
-            # except:
-            else:
-                print('breaking')
-                print(env.env.x)
-                # print(env.env.done)
-                break  # this case is when adding one branch terminates the process
+            # # except:
+            # else:
+            #     print('breaking')
+            #     print(env.env.x)
+            #     # print(env.env.done)
+            #     break  # this case is when adding one branch terminates the process
             # print(action)
             # random
             # _,_,_,cutsa,cutsb = ob
@@ -429,7 +460,7 @@ def elementaryrollout(env, policy, rollout_length, gamma, mode, backtrack, windo
         if not feasible_later:
             feasible_cut = False
 
-    return A, b, feasible_cut
+    return A, b, feasible_cut, info["done"]
 
 
 class NodeExpander(object):
@@ -441,14 +472,14 @@ class NodeExpander(object):
         raise NotImplementedError
 
 
-class LPExpander(NodeExpander):
-    def __init__(self):
-        NodeExpander.__init__(self)
-
-    def expandnode(self, node):
-        A, b, c, sense, vtype, maximize = node.A, node.b, node.c, node.sense, node.vtype, node.maximize
-        feasible, objective, solution = gurobi_int_solve(A, b, c, sense, vtype, maximize)
-        return feasible, objective, solution, True
+# class LPExpander(NodeExpander):
+#     def __init__(self):
+#         NodeExpander.__init__(self)
+#
+#     def expandnode(self, node):
+#         A, b, c, sense, vtype, maximize = node.A, node.b, node.c, node.sense, node.vtype, node.maximize
+#         feasible, objective, solution, basis_index = gurobi_int_solve(A, b, c, sense, vtype, maximize)
+#         return feasible, objective, solution, True
 
 
 # TODO: add parent node
@@ -457,23 +488,34 @@ class BaselineCutExpander(NodeExpander):
         NodeExpander.__init__(self)
         self.cutadder = BaselineCutAdder(max_num_cuts, backtrack, mode, policy, window, threshold)
 
-    def expandnode(self, node):
+    def expandnode(self, node, min_obj, max_obj):
         A, b, c, sense, vtype, maximize = node.A, node.b, node.c, node.sense, node.VType, node.maximize
         ipsolution = node.solution
         # solve lp to check if the problem is feasible
-        lpfeasible, objective, lpsolution = gurobi_int_solve(A, b, c, sense, vtype, maximize)
+        lpfeasible, objective, lpsolution, basis_index = gurobi_int_solve(A, b, c, sense, maximize=maximize)
         print('lp feasible', lpfeasible)
         if lpfeasible:
+            try:
+                min_obj = math.floor(min_obj)
+            except:
+                pass
+            try:
+                max_obj = math.ceil(max_obj)
+            except:
+                pass
+            if objective < min_obj or objective > max_obj:
+                print('Bounds Unsatisfied abandoning')
+                return False, objective, lpsolution, True, basis_index, 1
             # we can add cuts
-            Anew, bnew, cutfeasible = self.cutadder.add_cuts(A, b, c, sense, VType, maximize, ipsolution)
+            Anew, bnew, cutfeasible, done, env = self.cutadder.add_cuts(A, b, c, sense, VType, maximize, ipsolution)
             # solve the new lp
-            newlpfeasible, newobjective, newlpsolution = gurobi_int_solve(Anew, bnew, c, sense, vtype, maximize)
+            newlpfeasible, newobjective, newlpsolution, basis_index = gurobi_int_solve(Anew, bnew, c, sense, maximize=maximize)
             # modify nodes
             node.A = Anew
             node.b = bnew
-            return newlpfeasible, newobjective, newlpsolution, cutfeasible
+            return newlpfeasible, newobjective, newlpsolution, cutfeasible, basis_index, done
         else:
-            return lpfeasible, objective, lpsolution, True
+            return lpfeasible, objective, lpsolution, True, basis_index, 1
 
 
 if __name__ == '__main__':
@@ -546,7 +588,14 @@ if __name__ == '__main__':
         # load and expand a node
         # feasible, objective, solution = GurobiIntSolve2(A, b, c)
         originalnumcuts = node.A.shape[0]
-        feasible, objective, solution, cutfeasible = expander.expandnode(node)
+        # objective > np.min(fractionalsolutions)
+        # objective < BestObjective
+        if len(fractionalsolutions):
+            lower = np.min(fractionalsolutions)
+        else:
+            lower = -np.inf
+
+        feasible, objective, solution, cutfeasible, basis_index, done = expander.expandnode(node, lower, BestObjective)
         A, b, c = node.A, node.b, node.c
         newnumcuts = node.A.shape[0]
         print('adding num of cuts {}'.format(newnumcuts - originalnumcuts))
@@ -573,20 +622,26 @@ if __name__ == '__main__':
                     fractionalsolutions.pop(idx)
                 break
 
+        # if done == 0:
+        #     print(checkintegral(solution, basis_index, VType))
         # check cases
-        if feasible and objective > BestObjective:
+        if not done == 0 and feasible and len(fractionalsolutions) and objective < np.min(fractionalsolutions):
             # prune the node
+            pass
+        if not done == 0 and feasible and objective > BestObjective:
             pass
         elif not feasible:
             # prune the node
             pass
-        elif checkintegral(solution) is False:
+        # elif checkintegral(solution, basis_index, VType) is False:
+        elif done != 0:
             # the solution is not integer
             # need to branch
 
             # now we choose branching randomly
             # we choose branching based on how fraction variables are
-            index = np.argmax(np.abs(np.round(solution) - solution))
+            index = maxfrac(solution, basis_index, VType)
+            # index = np.argmax(np.abs(np.round(solution) - solution))
             print(index)
 
             # add the corresponding constraints and create nodes
@@ -613,7 +668,8 @@ if __name__ == '__main__':
             childrennodes.append([node1, node2])
             expanded.append([0, 0])
 
-        elif checkintegral(solution) is True:
+        elif done == 0:
+        # elif checkintegral(solution, basis_index, VType) is True:
             # check if better than current best
             if objective <= BestObjective:
                 BestSolution = solution
@@ -625,7 +681,7 @@ if __name__ == '__main__':
             break
 
         print('obj', BestObjective, 'sol', BestSolution, 'num of remaining nodes', len(nodelist), 'check int',
-              checkintegral(solution), 'feasible', feasible)
+              done == 0, 'feasible', feasible)
         print('lower bound', np.min(fractionalsolutions), 'len of fractional solutions', len(fractionalsolutions))
         print('lower bound set', fractionalsolutions)
         print('cut is feasible?', cutfeasible)
@@ -637,17 +693,17 @@ if __name__ == '__main__':
 
         # increment time count
         timecount += 1
-        if BestSolution is not None:
-            # compute the ratio
-            gap_now = BestObjective - np.min(fractionalsolutions)
-            base_gap = BestObjective - initial_lp_objective
-            ratio = gap_now / base_gap
-            # print('success statistics', ratio)
-            # ratios.append(ratio)
-            if ratio <= RATIO_THRESHOLD:
-                break
+        # if BestSolution is not None:
+        #     # compute the ratio
+        #     gap_now = BestObjective - np.min(fractionalsolutions)
+        #     base_gap = BestObjective - initial_lp_objective
+        #     ratio = gap_now / base_gap
+        #     # print('success statistics', ratio)
+        #     # ratios.append(ratio)
+        #     if ratio <= RATIO_THRESHOLD:
+        #         break
 
-        time.sleep(.2)
+        # time.sleep(.2)
 
         if timecount >= TIMELIMIT:
             break
