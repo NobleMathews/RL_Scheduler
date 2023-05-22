@@ -608,6 +608,7 @@ if __name__ == '__main__':
             if childrennodes[idx][0] == node:
                 expanded[idx][0] = 1
                 if expanded[idx][1] == 1:
+                    print("popping " + str(idx))
                     # pop the corresponding child node
                     childrennodes.pop(idx)
                     expanded.pop(idx)
@@ -616,6 +617,7 @@ if __name__ == '__main__':
             elif childrennodes[idx][1] == node:
                 expanded[idx][1] = 1
                 if expanded[idx][0] == 1:
+                    print("popping " + str(idx))
                     # pop the corresponding child node
                     childrennodes.pop(idx)
                     expanded.pop(idx)
@@ -626,11 +628,14 @@ if __name__ == '__main__':
         #     print(checkintegral(solution, basis_index, VType))
         # check cases
         if not done == 0 and feasible and len(fractionalsolutions) and objective < np.min(fractionalsolutions):
+            print("pruning cus bad sol LB")
             # prune the node
             pass
         if not done == 0 and feasible and objective > BestObjective:
+            print("pruning cus bad integer sol")
             pass
         elif not feasible:
+            print("pruning cus bad sol by bounds")
             # prune the node
             pass
         # elif checkintegral(solution, basis_index, VType) is False:
@@ -685,6 +690,7 @@ if __name__ == '__main__':
         print('lower bound', np.min(fractionalsolutions), 'len of fractional solutions', len(fractionalsolutions))
         print('lower bound set', fractionalsolutions)
         print('cut is feasible?', cutfeasible)
+        print('remaining ', len(nodelist))
 
         # compute optimality gap (old way)
         # ratiogap = (np.min(fractionalsolutions) - objslp) / (objsip[idxinstance] - objslp)
@@ -700,10 +706,11 @@ if __name__ == '__main__':
         #     ratio = gap_now / base_gap
         #     # print('success statistics', ratio)
         #     # ratios.append(ratio)
+
         #     if ratio <= RATIO_THRESHOLD:
         #         break
 
         # time.sleep(.2)
 
-        if timecount >= TIMELIMIT:
-            break
+        # if timecount >= TIMELIMIT:
+        #     break
